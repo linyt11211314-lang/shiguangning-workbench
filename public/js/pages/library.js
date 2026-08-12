@@ -511,6 +511,13 @@ function openProductModal(existing, onDone) {
   let selectedTier = 'aggressive';
   let lastTiers = {};
   let formReady = false;
+  // 报价显示统一 .99 结尾：仅改显示格式，底层计算与输入字段不变
+  // 负数 / 0 → 0.99；正数 → 取整 + 0.99
+  function to99Format(value) {
+    const v = Number(value);
+    if (!isFinite(v) || v <= 0) return 0.99;
+    return Math.floor(v) + 0.99;
+  }
   const gallery = createImageGallery({ onChange: () => scheduleSave('image') });
   const body = document.createElement('div');
   body.innerHTML = `
@@ -803,7 +810,7 @@ function openProductModal(existing, onDone) {
       allTiers[code] = tiers;
       if (result && !result.error) {
         const b = result.breakdown;
-        const tInline = PRICE_TIERS.map((t) => `${t.label} ${si.symbol}${tiers[t.id] ? tiers[t.id].price : '—'}`).join(' · ');
+        const tInline = PRICE_TIERS.map((t) => `${t.label} ${si.symbol}${tiers[t.id] ? to99Format(tiers[t.id].price).toFixed(2) : '—'}`).join(' · ');
         resEl.innerHTML = `
           <div class="sq-res-main">三档报价：<b>${tInline}</b></div>
           <div class="sq-res-detail">采购 ${si.symbol}${b.costUsd} · FBA ${si.symbol}${b.fbaFee} · 头程 ${si.symbol}${b.shippingPerUnit} · VAT ${si.symbol}${b.avt} · 仓储 ${si.symbol}${b.storage} · 退货 ${si.symbol}${b.return} · 佣金 ${si.symbol}${b.referral} · 广告 ${si.symbol}${b.ad}</div>
@@ -833,8 +840,8 @@ function openProductModal(existing, onDone) {
           <div class="tier-card tier-${t.color} ${isSel ? 'selected' : ''}" data-tier="${t.id}">
             <div class="tier-head"><span class="tier-dot"></span>${t.label}</div>
             <div class="tier-margin-sub">利润率 ${Math.round(t.margin * 100)}%</div>
-            ${tv ? `<div class="tier-price">${sym}${tv.price}</div>
-              <div class="tier-profit">利润 ${sym}${tv.profit}</div>
+            ${tv ? `<div class="tier-price">${sym}${to99Format(tv.price).toFixed(2)}</div>
+              <div class="tier-profit">利润 ${sym}${to99Format(tv.profit).toFixed(2)}</div>
               <div class="tier-margin2">利润率 ${Math.round(tv.margin * 100)}%</div>`
               : `<div class="tier-empty">填写成本后计算</div>`}
           </div>`;
@@ -1018,7 +1025,8 @@ function openProductModal(existing, onDone) {
     const images = gallery.getValue();
     const mainImg = images.find((i) => i.isMain) || images[0];
     const selTier = (lastTiers && lastTiers[selectedTier]) ? selectedTier : (PRICE_TIERS[0] ? PRICE_TIERS[0].id : 'balanced');
-    const price = (lastTiers && lastTiers[selTier]) ? lastTiers[selTier].price : '';
+    const rawPrice = (lastTiers && lastTiers[selTier]) ? lastTiers[selTier].price : '';
+    const price = rawPrice !== '' && rawPrice != null ? Number(to99Format(rawPrice).toFixed(2)) : '';
     return {
       image: mainImg ? mainImg.data : '',
       name: body.querySelector('[data-f="name"]').value.trim(),

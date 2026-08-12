@@ -88,6 +88,26 @@ export function calculateQuote(input = {}) {
   };
 }
 
+/**
+ * 将报价转换为 .99 结尾的展示价，且保证展示价 >= 理论售价（利润率达标）
+ * 公式：展示价 = floor(理论售价) + 0.99；若 floor+0.99 < 理论售价，则 +1 → floor+1.99
+ * 同时按展示价重算实际利润（展示价 - 各费率项 - 单件成本）
+ * @param {{price:number, breakdown:object}} quote calculateQuote 的返回
+ * @returns {{displayPrice:number, displayProfit:number}|null}
+ */
+export function apply99(quote) {
+  if (!quote || quote.error || !isFinite(quote.price)) return null;
+  const p = quote.price;
+  let d = Math.floor(p) + 0.99;
+  if (d < p) d = Math.floor(p) + 1.99;
+  const b = quote.breakdown || {};
+  const total = (Number(b.costUsd) || 0) + (Number(b.fbaFee) || 0) + (Number(b.shippingPerUnit) || 0);
+  const fiveDed = (Number(b.referral) || 0) + (Number(b.ad) || 0) + (Number(b.avt) || 0) + (Number(b.storage) || 0) + (Number(b.return) || 0);
+  const sumFiveRates = p > 0 ? fiveDed / p : 0;
+  const profit = d * (1 - sumFiveRates) - total;
+  return { displayPrice: d, displayProfit: Math.round(profit * 100) / 100 };
+}
+
 /** 默认测算参数（百分比字段与 UI 一致，用整数，如 30 表示 30%） */
 export const DEFAULT_QUOTE = {
   lengthCm: '', widthCm: '', heightCm: '', weightG: '',

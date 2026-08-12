@@ -11,11 +11,13 @@ import { render as renderHome } from './pages/home.js';
 import { render as renderLibrary } from './pages/library.js';
 import { render as renderListing } from './pages/listing.js';
 import { render as renderSettings } from './pages/settings.js';
+import { render as renderCommission } from './pages/commission.js';
 
 const NAV = [
   { id: 'home', label: '首页', icon: 'home' },
   { id: 'library', label: '选品库', icon: 'box' },
   { id: 'listing', label: 'AI Listing 工坊', icon: 'sparkles' },
+  { id: 'commission', label: '我的提成预估', icon: 'chart' },
   { id: 'settings', label: '设置', icon: 'settings' },
 ];
 
@@ -23,13 +25,14 @@ const TITLES = {
   home: { title: '首页', sub: '拾光柠工作台概览' },
   library: { title: '选品库', sub: '产品素材管理 · 一键导入 Listing 工坊' },
   listing: { title: 'AI Listing 工坊', sub: '亚马逊产品开发内容生成中心' },
+  commission: { title: '我的提成预估', sub: '按昨天以前的完整数据推算提成' },
   settings: { title: '设置', sub: 'DeepSeek AI 服务与偏好' },
 };
 
 let currentRoute = 'home';
 
 function pageOf(route) {
-  if (route === 'home' || route === 'library' || route === 'settings') return route;
+  if (route === 'home' || route === 'library' || route === 'settings' || route === 'commission') return route;
   if (route.startsWith('listing')) return 'listing';
   return 'home';
 }
@@ -100,6 +103,7 @@ function renderPage() {
   if (page === 'home') renderHome(container, ctx);
   else if (page === 'library') renderLibrary(container, ctx);
   else if (page === 'listing') renderListing(container, currentRoute, ctx);
+  else if (page === 'commission') renderCommission(container, ctx);
   else if (page === 'settings') renderSettings(container, ctx);
 }
 

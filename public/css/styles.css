@@ -1107,3 +1107,53 @@ html, body {
 .save-status--saved { background: var(--green-soft); color: var(--green); }
 .save-status--saving { background: var(--amber-soft); color: var(--amber); }
 .save-status--error { background: #fdecec; color: #e5484d; cursor: pointer; }
+
+/* ===== 我的提成预估 ===== */
+.comm-intro { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; }
+.comm-intro-icon { width: 46px; height: 46px; border-radius: 14px; background: var(--primary-soft); color: var(--primary-deep); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.comm-intro-icon svg { width: 24px; height: 24px; }
+.comm-intro-title { font-size: 19px; font-weight: 800; color: var(--text); }
+.comm-intro-sub { font-size: 13px; color: var(--text-sub); margin-top: 2px; }
+
+.comm-status { font-size: 12.5px; font-weight: 600; padding: 5px 12px; border-radius: 999px; white-space: nowrap; }
+.comm-status--saved { background: var(--green-soft); color: var(--green); }
+.comm-status--saving { background: var(--amber-soft); color: var(--amber); }
+.comm-status--error { background: var(--red-soft); color: var(--red); cursor: pointer; }
+
+.ov-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 18px; }
+.ov-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-card); padding: 18px 20px; position: relative; overflow: hidden; }
+.ov-icon { width: 40px; height: 40px; border-radius: 12px; display: flex; align-items: center; justify-content: center; margin-bottom: 12px; }
+.ov-icon svg { width: 22px; height: 22px; }
+.ov-label { font-size: 13px; color: var(--text-sub); font-weight: 600; }
+.ov-value { font-size: 27px; font-weight: 800; color: var(--text); line-height: 1.15; margin: 3px 0 6px; letter-spacing: -.5px; }
+.ov-sub { font-size: 12.5px; color: var(--text-faint); }
+
+.site-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 18px; }
+.site-card { }
+.site-flag { width: 34px; height: 34px; border-radius: 10px; background: var(--card-soft); display: flex; align-items: center; justify-content: center; font-size: 19px; }
+.rate-badge { font-size: 12px; font-weight: 700; padding: 3px 10px; border-radius: 999px; background: var(--primary-soft); color: var(--primary-deep); }
+.site-stats { margin-top: 14px; border-top: 1px dashed var(--border-strong); padding-top: 12px; display: flex; flex-direction: column; gap: 7px; }
+.ss-row { display: flex; align-items: center; justify-content: space-between; font-size: 13.5px; color: var(--text-sub); }
+.ss-row b { color: var(--text); font-weight: 700; font-variant-numeric: tabular-nums; }
+.ss-strong { border-top: 1px solid var(--border); margin-top: 4px; padding-top: 10px; font-size: 14.5px; }
+.ss-strong span { color: var(--text); font-weight: 700; }
+.ss-strong b { color: var(--primary-deep); font-size: 16px; }
+.site-foot { margin-top: 12px; font-size: 12px; color: var(--text-faint); }
+
+.plan-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 18px; }
+
+.comm-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+.comm-table th { text-align: left; font-weight: 600; color: var(--text-sub); padding: 8px 10px; border-bottom: 1px solid var(--border-strong); font-size: 12.5px; }
+.comm-table td { padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+.comm-table tbody tr:hover { background: var(--card-soft); }
+.mono { font-variant-numeric: tabular-nums; font-weight: 600; }
+.pos { color: var(--green); }
+.neg { color: var(--red); }
+.comm-actual { max-width: 130px; }
+
+.comm-footer { display: flex; align-items: center; gap: 10px; margin-top: 6px; padding: 14px 4px 4px; font-size: 12.5px; color: var(--text-sub); border-top: 1px solid var(--border); }
+.comm-footer-dev { color: var(--text-faint); }
+
+@media (max-width: 880px) {
+  .ov-row, .site-grid, .plan-grid { grid-template-columns: 1fr; }
+}

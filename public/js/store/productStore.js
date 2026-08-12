@@ -7,7 +7,7 @@
  *                         targetProfitRate, adRate, referralRate, fbaFee, shippingPerUnit, result }）,
  *          description, keywords, createdAt, updatedAt
  */
-import { STORAGE_KEYS, CATEGORY_IDS } from '../config.js';
+import { STORAGE_KEYS, CATEGORY_IDS, PRICE_TIER_IDS } from '../config.js';
 import { uid } from '../utils.js';
 
 let products = null;
@@ -55,6 +55,17 @@ export function normalizeProduct(p) {
     if (!out.productCategory) out.productCategory = out.category || '';
     out.category = CATEGORY_IDS.includes(out.category) ? out.category : 'niuma';
   }
+  // 多图片迁移：旧 image 单图 -> images 数组；保证有且仅有一个主图
+  if (!Array.isArray(out.images)) {
+    out.images = out.image ? [{ id: uid('img'), data: out.image, isMain: true }] : [];
+  }
+  if (out.images.length && !out.images.some((i) => i.isMain)) out.images[0].isMain = true;
+  // 三档推荐报价字段兜底
+  out.selectedPriceTier = PRICE_TIER_IDS.includes(out.selectedPriceTier) ? out.selectedPriceTier : 'aggressive';
+  out.priceTiers = (out.priceTiers && typeof out.priceTiers === 'object') ? out.priceTiers : null;
+  out.price = (out.price != null && out.price !== '') ? out.price : (out.quote && out.quote.result && out.quote.result.price != null ? out.quote.result.price : '');
+  out.draftSaved = Boolean(out.draftSaved);
+  out.localDraft = out.localDraft || null;
   return out;
 }
 
@@ -87,6 +98,12 @@ export function addProduct(data) {
       : (data.supply1688 || ''),
     quotes,
     quote: data.quote || quotes[mainSite] || null,
+    images: Array.isArray(data.images) ? data.images : [],
+    selectedPriceTier: PRICE_TIER_IDS.includes(data.selectedPriceTier) ? data.selectedPriceTier : 'aggressive',
+    priceTiers: (data.priceTiers && typeof data.priceTiers === 'object') ? data.priceTiers : null,
+    price: data.price != null ? data.price : '',
+    draftSaved: Boolean(data.draftSaved),
+    localDraft: data.localDraft || null,
     description: data.description || '',
     keywords: data.keywords || '',
     createdAt: now,

@@ -16,6 +16,22 @@ export function categoryLabel(id) {
   return c ? c.label : id;
 }
 
+/** 三档推荐报价（目标利润率），用于替换原单档推荐价显示 */
+export const PRICE_TIERS = [
+  { id: 'conservative', label: '保守价', margin: 0.01, color: 'green' },
+  { id: 'balanced', label: '均衡价', margin: 0.15, color: 'amber' },
+  { id: 'aggressive', label: '激进价', margin: 0.30, color: 'red' },
+];
+export const PRICE_TIER_IDS = PRICE_TIERS.map((t) => t.id);
+export function priceTierById(id) {
+  return PRICE_TIERS.find((t) => t.id === id) || PRICE_TIERS[1];
+}
+
+/** 产品图片限制 */
+export const MAX_IMAGES = 20;
+export const MAX_IMAGE_MB = 5;
+export const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+
 /** Amazon 目标站点（含本地货币与人民币参考汇率） */
 export const AMAZON_SITES = [
   { code: 'US', label: '美国站', flag: '🇺🇸', domain: 'amazon.com', currency: 'USD', symbol: '$', rate: 7.2 },

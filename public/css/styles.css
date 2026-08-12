@@ -548,6 +548,7 @@ html, body {
 }
 @keyframes fadeIn { from { opacity: 0; } }
 .modal {
+  position: relative;
   width: 560px; max-width: calc(100vw - 48px); max-height: calc(100vh - 72px);
   background: var(--card); border-radius: var(--radius-xl);
   box-shadow: var(--shadow-float); display: flex; flex-direction: column;
@@ -1034,3 +1035,75 @@ html, body {
   cursor: pointer;
 }
 .menu-pop-item:hover { background: var(--primary-soft); color: var(--primary-deep); }
+
+/* ===== 编辑产品：三档推荐报价卡片 ===== */
+.tier-title { font-size: 13.5px; font-weight: 700; color: var(--text); margin: 6px 0 10px; }
+.tier-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.tier-card {
+  border: 2px solid var(--border); border-radius: var(--radius-lg); padding: 12px 12px 14px;
+  background: var(--card-soft); cursor: pointer; transition: border-color .15s, box-shadow .15s, transform .1s;
+  text-align: center;
+}
+.tier-card:hover { transform: translateY(-2px); }
+.tier-card.selected { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-soft); }
+.tier-head { display: flex; align-items: center; justify-content: center; gap: 6px; font-weight: 700; font-size: 14px; color: var(--text); }
+.tier-dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+.tier-conservative .tier-dot { background: var(--green); }
+.tier-balanced .tier-dot { background: var(--amber); }
+.tier-aggressive .tier-dot { background: var(--red, #e5484d); }
+.tier-margin-sub { font-size: 11.5px; color: var(--text-faint); margin: 2px 0 8px; }
+.tier-price { font-size: 21px; font-weight: 800; color: var(--text); line-height: 1.1; }
+.tier-profit { font-size: 12.5px; color: var(--text-sub); margin-top: 4px; }
+.tier-margin2 { font-size: 11.5px; color: var(--text-faint); margin-top: 2px; }
+.tier-empty { font-size: 12px; color: var(--text-faint); padding: 14px 0; }
+.tier-radio-row { display: flex; align-items: center; gap: 14px; margin-top: 12px; flex-wrap: wrap; }
+.tier-radio-label { font-size: 13px; color: var(--text-sub); }
+.tier-radio-opt { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; color: var(--text); cursor: pointer; }
+.tier-radio-opt input { accent-color: var(--primary); }
+
+/* ===== 编辑产品：多图片画廊 ===== */
+.img-gallery { display: flex; flex-direction: column; gap: 10px; }
+.ig-drop {
+  border: 2px dashed var(--border-strong); border-radius: var(--radius-lg); padding: 16px; text-align: center;
+  cursor: pointer; background: var(--card-soft); transition: border-color .15s, background .15s;
+}
+.ig-drop:hover, .ig-drag .ig-drop, .img-gallery.ig-drag .ig-drop { border-color: var(--primary); background: var(--primary-soft); }
+.ig-drop-inner { display: flex; flex-direction: column; align-items: center; gap: 4px; color: var(--text-sub); }
+.ig-drop-inner svg { width: 24px; height: 24px; opacity: .7; }
+.ig-title { font-size: 13px; font-weight: 600; color: var(--text); }
+.ig-sub { font-size: 11.5px; color: var(--text-faint); }
+.ig-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 10px; }
+.ig-tile {
+  position: relative; aspect-ratio: 1 / 1; border-radius: var(--radius-md); overflow: hidden;
+  border: 2px solid var(--border); background: var(--bg-deep); cursor: pointer;
+}
+.ig-tile img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.ig-tile.is-main { border-color: var(--primary); box-shadow: 0 0 0 2px var(--primary-soft); }
+.ig-star { position: absolute; top: 3px; left: 4px; font-size: 13px; filter: drop-shadow(0 1px 1px rgba(0,0,0,.4)); }
+.ig-del {
+  position: absolute; top: 3px; right: 3px; width: 20px; height: 20px; border-radius: 50%;
+  border: none; background: rgba(0,0,0,.55); color: #fff; font-size: 12px; line-height: 1; cursor: pointer;
+  display: none; align-items: center; justify-content: center;
+}
+.ig-tile:hover .ig-del { display: flex; }
+.ig-setmain {
+  position: absolute; bottom: 0; left: 0; right: 0; font-size: 10.5px; text-align: center; padding: 2px 0;
+  background: rgba(0,0,0,.5); color: #fff; opacity: 0; transition: opacity .12s;
+}
+.ig-tile:hover .ig-setmain { opacity: 1; }
+.ig-tile.is-main .ig-setmain { opacity: 1; background: var(--primary); }
+.ig-add {
+  display: flex; align-items: center; justify-content: center; border-style: dashed; cursor: pointer;
+  color: var(--text-faint); min-height: 92px;
+}
+.ig-add:hover { border-color: var(--primary); color: var(--primary); }
+.ig-add-inner { display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 12px; }
+
+/* ===== 自动保存状态指示 ===== */
+.save-status {
+  position: absolute; top: 14px; right: 48px; z-index: 6; font-size: 12px; font-weight: 600;
+  padding: 3px 10px; border-radius: 999px; cursor: default; white-space: nowrap;
+}
+.save-status--saved { background: var(--green-soft); color: var(--green); }
+.save-status--saving { background: var(--amber-soft); color: var(--amber); }
+.save-status--error { background: #fdecec; color: #e5484d; cursor: pointer; }

@@ -3,13 +3,12 @@
  * 三大分类（列表）：牛马人 / 昭梧 / 沣洋，产品可在分类间复制、移动。
  */
 import { icon } from '../ui/icons.js';
-import { esc, normalizeUrl, formatDate } from '../utils.js';
+import { esc, normalizeUrl, formatDate, fileToDataURL, extractImageFromEvent, uid } from '../utils.js';
 import { listProducts, getProduct, addProductTracked, updateProductTracked, removeProductTracked } from '../store/productStore.js';
 import { getSettings } from '../store/settingsStore.js';
-import { AMAZON_SITES, PER_SITE_RATES, CATEGORIES, CATEGORY_IDS, categoryLabel } from '../config.js';
+import { AMAZON_SITES, PER_SITE_RATES, CATEGORIES, CATEGORY_IDS, categoryLabel, PRICE_TIERS, priceTierById, MAX_IMAGES, MAX_IMAGE_MB, ALLOWED_IMAGE_TYPES } from '../config.js';
 import { openModal, confirmDialog } from '../ui/modal.js';
 import { toastSuccess, toastError, toastInfo } from '../ui/toast.js';
-import { createImageUploader } from '../ui/fields.js';
 import { calculateQuote, DEFAULT_QUOTE, quickQuote, calcChargeableWeight } from '../services/pricing.js';
 import { exportProductsExcel, importProductsExcel } from '../services/productTransfer.js';
 
@@ -130,7 +129,7 @@ export function render(container, { navigate, rerender }) {
     filter = e.target.value.trim().toLowerCase();
     renderGrid();
   });
-  container.querySelector('[data-add]').addEventListener('click', () => openProductModal(null, () => {}));
+  container.querySelector('[data-add]').addEventListener('click', () => openProductModal(null, rerender));
 
   // ---------- 导出 Excel ----------
   container.querySelector('[data-export]').addEventListener('click', () => {
@@ -216,7 +215,7 @@ export function render(container, { navigate, rerender }) {
           ${filter ? '' : '<div class="mt-12"><button class="btn btn-primary" data-add2>添加产品</button></div>'}
         </div></div>`;
       const add2 = grid.querySelector('[data-add2]');
-      if (add2) add2.addEventListener('click', () => openProductModal(null, () => {}));
+      if (add2) add2.addEventListener('click', () => openProductModal(null, rerender));
       updateBulkBar();
       return;
     }
@@ -254,7 +253,7 @@ export function render(container, { navigate, rerender }) {
           <div class="lib-table-row ${rowSel ? 'selected' : ''}" data-id="${p.id}" title="点击编辑产品">
             <label class="lib-check" title="选择"><input type="checkbox" data-check="${p.id}" ${rowSel ? 'checked' : ''}></label>
             <div class="lib-thumb-sm">
-              ${p.image ? `<img src="${esc(p.image)}" alt="">` : `<span class="no-img-sm">${icon('image')}</span>`}
+              ${mainImageOf(p) ? `<img src="${esc(mainImageOf(p))}" alt="">` : `<span class="no-img-sm">${icon('image')}</span>`}
             </div>
             <div class="lib-name-cell">
               <div class="lib-name">${esc(p.name || '未命名产品')}</div>
@@ -310,7 +309,7 @@ export function render(container, { navigate, rerender }) {
       row.addEventListener('click', (e) => {
         if (e.target.closest('button') || e.target.closest('a') || e.target.closest('.lib-check')) return;
         const p = listProducts().find((x) => x.id === row.dataset.id);
-        if (p) openProductModal(p, () => {});
+        if (p) openProductModal(p, rerender);
       });
     });
     grid.querySelectorAll('[data-import]').forEach((btn) => {
@@ -323,7 +322,7 @@ export function render(container, { navigate, rerender }) {
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
         const p = listProducts().find((x) => x.id === btn.dataset.edit);
-        if (p) openProductModal(p, () => {});
+        if (p) openProductModal(p, rerender);
       });
     });
     grid.querySelectorAll('[data-del]').forEach((btn) => {
@@ -385,13 +384,138 @@ export function render(container, { navigate, rerender }) {
   renderGrid();
 }
 
+/** 取产品主图（兼容旧单图 image 与新 images 数组） */
+function mainImageOf(p) {
+  if (Array.isArray(p.images) && p.images.length) {
+    const m = p.images.find((i) => i.isMain) || p.images[0];
+    return m && m.data ? m.data : '';
+  }
+  return p.image || '';
+}
+
+/**
+ * 多图片画廊组件（点击 / 拖拽 / Ctrl+V 粘贴上传，Base64 存储）
+ * 返回 { el, getValue, setValue, setSilent }
+ */
+function createImageGallery({ onChange } = {}) {
+  const el = document.createElement('div');
+  el.className = 'img-gallery';
+  el.innerHTML = `
+    <div class="ig-drop" data-ig-drop>
+      <div class="ig-drop-inner">
+        ${icon('upload')}
+        <div class="ig-title">点击上传 / 拖拽上传 / Ctrl+V 粘贴</div>
+        <div class="ig-sub">支持 JPG / PNG / WebP，单张不超过 ${MAX_IMAGE_MB}MB，最多 ${MAX_IMAGES} 张</div>
+      </div>
+      <input type="file" accept="image/jpeg,image/png,image/webp" multiple hidden data-ig-input>
+    </div>
+    <div class="ig-grid" data-ig-grid></div>
+  `;
+  const input = el.querySelector('[data-ig-input]');
+  const drop = el.querySelector('[data-ig-drop]');
+  const grid = el.querySelector('[data-ig-grid]');
+  let images = [];
+
+  function emit() { if (onChange) onChange(images); }
+  function setImages(arr, silent) {
+    images = (Array.isArray(arr) ? arr : []).map((x) => ({ id: x.id || uid('img'), data: x.data, isMain: Boolean(x.isMain) }));
+    if (images.length && !images.some((i) => i.isMain)) images[0].isMain = true;
+    render();
+    if (!silent) emit();
+  }
+  function render() {
+    grid.innerHTML = '';
+    if (!images.length) {
+      drop.style.display = '';
+    } else {
+      drop.style.display = 'none';
+      images.forEach((img) => {
+        const tile = document.createElement('div');
+        tile.className = 'ig-tile' + (img.isMain ? ' is-main' : '');
+        tile.innerHTML = `
+          <img src="${img.data}" alt="">
+          ${img.isMain ? '<span class="ig-star">⭐</span>' : ''}
+          <button class="ig-del" type="button" title="删除" data-ig-del="${img.id}">✕</button>
+          <span class="ig-setmain" data-ig-main="${img.id}">${img.isMain ? '主图' : '设为主图'}</span>`;
+        grid.appendChild(tile);
+      });
+      const addTile = document.createElement('div');
+      addTile.className = 'ig-tile ig-add';
+      addTile.innerHTML = `<div class="ig-add-inner">${icon('plus')}<span>添加</span></div>`;
+      grid.appendChild(addTile);
+    }
+    bindGrid();
+  }
+  function bindGrid() {
+    grid.querySelectorAll('[data-ig-del]').forEach((b) => {
+      b.onclick = (e) => {
+        e.stopPropagation();
+        images = images.filter((x) => x.id !== b.dataset.igDel);
+        if (images.length && !images.some((x) => x.isMain)) images[0].isMain = true;
+        render(); emit();
+      };
+    });
+    grid.querySelectorAll('[data-ig-main]').forEach((b) => {
+      b.onclick = (e) => {
+        e.stopPropagation();
+        const id = b.dataset.igMain;
+        images.forEach((x) => { x.isMain = x.id === id; });
+        render(); emit();
+      };
+    });
+    const addTile = grid.querySelector('.ig-add');
+    if (addTile) addTile.onclick = () => input.click();
+  }
+  async function addFiles(fileList) {
+    const files = Array.from(fileList || []);
+    if (!files.length) return;
+    for (const file of files) {
+      if (images.length >= MAX_IMAGES) { toastError(`最多 ${MAX_IMAGES} 张图片`); break; }
+      if (!ALLOWED_IMAGE_TYPES.includes(file.type)) { toastError('仅支持 JPG / PNG / WebP 格式'); continue; }
+      if (file.size > MAX_IMAGE_MB * 1024 * 1024) { toastError(`图片超过 ${MAX_IMAGE_MB}MB，请压缩后上传`); continue; }
+      try {
+        const dataUrl = await fileToDataURL(file);
+        images.push({ id: uid('img'), data: dataUrl, isMain: images.length === 0 });
+        render(); emit();
+      } catch (_) {
+        toastError('图片上传失败：读取文件出错');
+      }
+    }
+  }
+  drop.addEventListener('click', () => input.click());
+  input.addEventListener('change', () => { addFiles(input.files); input.value = ''; });
+  ['dragover', 'dragenter'].forEach((ev) => el.addEventListener(ev, (e) => { e.preventDefault(); el.classList.add('ig-drag'); }));
+  ['dragleave', 'drop'].forEach((ev) => el.addEventListener(ev, (e) => { e.preventDefault(); el.classList.remove('ig-drag'); }));
+  el.addEventListener('drop', (e) => {
+    const dt = e.dataTransfer;
+    if (dt && dt.files && dt.files.length) addFiles(dt.files);
+  });
+  document.addEventListener('paste', (e) => {
+    if (!el.isConnected) return;
+    const t = e.target;
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+    const file = extractImageFromEvent(e);
+    if (file) { e.preventDefault(); addFiles([file]); }
+  });
+  return {
+    el,
+    getValue: () => images,
+    setValue: (arr) => setImages(arr, false),
+    setSilent: (arr) => setImages(arr, true),
+  };
+}
+
 /** 产品添加/编辑弹窗 */
 function openProductModal(existing, onDone) {
-  const uploader = createImageUploader({});
+  const isExisting = Boolean(existing);
+  let selectedTier = 'aggressive';
+  let lastTiers = {};
+  let formReady = false;
+  const gallery = createImageGallery({ onChange: () => scheduleSave('image') });
   const body = document.createElement('div');
   body.innerHTML = `
     <div class="field">
-      <div class="field-label">产品图片 <span class="hint">点击选中 / 双击上传 / Ctrl+V 粘贴</span></div>
+      <div class="field-label">产品图片 <span class="hint">点击 / 拖拽 / Ctrl+V 粘贴上传，最多 ${MAX_IMAGES} 张</span></div>
       <div data-uploader></div>
     </div>
     <div class="field">
@@ -468,13 +592,14 @@ function openProductModal(existing, onDone) {
       <textarea class="textarea" data-f="description" rows="3" placeholder="产品描述 / 卖点素材"></textarea>
     </div>
   `;
-  body.querySelector('[data-uploader]').appendChild(uploader.el);
+  body.querySelector('[data-uploader]').appendChild(gallery.el);
 
   // 分类单选高亮
   const catRadio = body.querySelector('[data-cat-radio]');
   catRadio.querySelectorAll('input').forEach((r) => {
     r.addEventListener('change', () => {
       catRadio.querySelectorAll('.cat-radio-item').forEach((l) => l.classList.toggle('active', l.querySelector('input').checked));
+      scheduleSave('category');
     });
   });
 
@@ -642,6 +767,7 @@ function openProductModal(existing, onDone) {
       volWeightDivisor: base.volWeightDivisor,
     });
     const summary = [];
+    const allTiers = {};
     selectedSites.forEach((code) => {
       const si = siteInfoOf(code);
       const card = cardsBox.querySelector(`[data-site-card="${code}"]`);
@@ -662,10 +788,24 @@ function openProductModal(existing, onDone) {
         fbaFee: f.fbaFee === '' ? 0 : f.fbaFee, shippingPerUnit: f.shippingPerUnit === '' ? 0 : f.shippingPerUnit,
         symbol: si.symbol || '$',
       });
+      // 三档推荐报价（1% / 15% / 30%）—— 沿用现有成本/费率字段，仅改变目标利润率
+      const tiers = {};
+      PRICE_TIERS.forEach((t) => {
+        const r = calculateQuote({
+          cost: base.cost, exchangeRate: f.exchangeRate, targetProfitRate: t.margin,
+          adRate: f.adRate / 100, referralRate: f.referralRate / 100,
+          avtRate: f.avtRate / 100, storageRate: f.storageRate / 100, returnRate: f.returnRate / 100,
+          fbaFee: f.fbaFee === '' ? 0 : f.fbaFee, shippingPerUnit: f.shippingPerUnit === '' ? 0 : f.shippingPerUnit,
+          symbol: si.symbol || '$',
+        });
+        tiers[t.id] = (r && !r.error) ? { price: r.price, profit: r.profit, margin: r.margin } : null;
+      });
+      allTiers[code] = tiers;
       if (result && !result.error) {
         const b = result.breakdown;
+        const tInline = PRICE_TIERS.map((t) => `${t.label} ${si.symbol}${tiers[t.id] ? tiers[t.id].price : '—'}`).join(' · ');
         resEl.innerHTML = `
-          <div class="sq-res-main">推荐报价 <b>${si.symbol}${result.price}</b> · 利润 ${si.symbol}${result.profit} · 利润率 ${Math.round(result.margin * 100)}%</div>
+          <div class="sq-res-main">三档报价：<b>${tInline}</b></div>
           <div class="sq-res-detail">采购 ${si.symbol}${b.costUsd} · FBA ${si.symbol}${b.fbaFee} · 头程 ${si.symbol}${b.shippingPerUnit} · VAT ${si.symbol}${b.avt} · 仓储 ${si.symbol}${b.storage} · 退货 ${si.symbol}${b.return} · 佣金 ${si.symbol}${b.referral} · 广告 ${si.symbol}${b.ad}</div>
           <div class="sq-res-note">计费重量 ${cw.chargeable}kg（实重 ${cw.actual}kg / 体积重 ${cw.vol}kg${base.volWeightDivisor ? `，除数 ${base.volWeightDivisor}` : ''}）</div>`;
       } else {
@@ -673,11 +813,53 @@ function openProductModal(existing, onDone) {
       }
       summary.push({ si, result });
     });
-    summaryBox.innerHTML = summary.length ? `
-      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px">
-        ${summary.map(({ si, result }) => `
-          <span class="tag" style="background:var(--green-soft);color:var(--green);border-color:var(--tag-g-border)">${si.flag} ${si.code} 建议 ${result && !result.error ? si.symbol + result.price : '—'}</span>`).join('')}
-      </div>` : '';
+    renderTierBlock(allTiers, [...selectedSites][0]);
+    if (formReady) scheduleSave('input');
+  }
+
+  function renderTierBlock(allTiers, primaryCode) {
+    const si = siteInfoOf(primaryCode);
+    const sym = (si && si.symbol) || '$';
+    const tiers = (allTiers && allTiers[primaryCode]) || {};
+    lastTiers = tiers;
+    const sel = selectedTier;
+    summaryBox.innerHTML = `
+      <div class="tier-title">💰 推荐报价（基于当前成本与费率自动计算）</div>
+      <div class="tier-cards">
+        ${PRICE_TIERS.map((t) => {
+          const tv = tiers[t.id];
+          const isSel = sel === t.id;
+          return `
+          <div class="tier-card tier-${t.color} ${isSel ? 'selected' : ''}" data-tier="${t.id}">
+            <div class="tier-head"><span class="tier-dot"></span>${t.label}</div>
+            <div class="tier-margin-sub">利润率 ${Math.round(t.margin * 100)}%</div>
+            ${tv ? `<div class="tier-price">${sym}${tv.price}</div>
+              <div class="tier-profit">利润 ${sym}${tv.profit}</div>
+              <div class="tier-margin2">利润率 ${Math.round(tv.margin * 100)}%</div>`
+              : `<div class="tier-empty">填写成本后计算</div>`}
+          </div>`;
+        }).join('')}
+      </div>
+      <div class="tier-radio-row">
+        <span class="tier-radio-label">当前选用：</span>
+        ${PRICE_TIERS.map((t) => `
+          <label class="tier-radio-opt">
+            <input type="radio" name="tierSel" value="${t.id}" ${sel === t.id ? 'checked' : ''} data-tier-radio="${t.id}">
+            <span>${t.label}</span>
+          </label>`).join('')}
+      </div>`;
+    summaryBox.querySelectorAll('[data-tier]').forEach((card) => {
+      card.addEventListener('click', () => selectTier(card.dataset.tier));
+    });
+    summaryBox.querySelectorAll('[data-tier-radio]').forEach((r) => {
+      r.addEventListener('change', () => selectTier(r.value));
+    });
+  }
+  function selectTier(id) {
+    selectedTier = id;
+    summaryBox.querySelectorAll('[data-tier]').forEach((c) => c.classList.toggle('selected', c.dataset.tier === id));
+    summaryBox.querySelectorAll('[data-tier-radio]').forEach((r) => { r.checked = r.value === id; });
+    scheduleSave('tier');
   }
 
   body.querySelectorAll('[data-site-toggle]').forEach((btn) => {
@@ -708,19 +890,33 @@ function openProductModal(existing, onDone) {
     if (sr) body.querySelector('[data-q="seaFreightRate"]').value = sr;
   }
 
-  const initSites = (existing && Array.isArray(existing.sites) && existing.sites.length)
-    ? existing.sites
-    : (existing && existing.quote && existing.quote.site ? [existing.quote.site] : (existing ? [existing.site || 'US'] : ['US']));
+  // 草稿恢复：刷新后尝试恢复未保存数据（仅当草稿比已存数据新）
+  let src = existing;
+  const draftKey = 'lib_draft_' + (existing ? existing.id : 'new');
+  try {
+    const raw = localStorage.getItem(draftKey);
+    if (raw) {
+      const d = JSON.parse(raw);
+      if (d && d.data && (!existing || d.ts > (existing.updatedAt || 0))) {
+        src = existing ? { ...existing, ...d.data } : d.data;
+        if (existing) toastInfo('已恢复上次未保存的草稿');
+      }
+    }
+  } catch (_) {}
+
+  const initSites = (src && Array.isArray(src.sites) && src.sites.length)
+    ? src.sites
+    : (src && src.quote && src.quote.site ? [src.quote.site] : (src ? [src.site || 'US'] : ['US']));
   initSites.forEach((s) => selectedSites.add(s));
-  if (existing) {
-    const qs = existing.quotes || (existing.quote ? { [existing.quote.site || existing.site || 'US']: existing.quote } : {});
+  if (src) {
+    const qs = src.quotes || (src.quote ? { [src.quote.site || src.site || 'US']: src.quote } : {});
     Object.entries(qs).forEach(([code, q]) => {
       if (!siteFieldCache[code]) siteFieldCache[code] = {};
       ['exchangeRate', 'targetProfitRate', 'adRate', 'referralRate', 'avtRate', 'storageRate', 'returnRate', 'fbaFee', 'shippingPerUnit'].forEach((k) => {
         if (q && q[k] !== '' && q[k] != null) siteFieldCache[code][k] = q[k];
       });
     });
-    const qMain = existing.quote || qs[initSites[0]] || null;
+    const qMain = src.quote || qs[initSites[0]] || null;
     if (qMain) {
       ['lengthCm', 'widthCm', 'heightCm', 'cost', 'seaFreightRate', 'volWeightDivisor'].forEach((k) => {
         const el = body.querySelector(`[data-q="${k}"]`);
@@ -730,19 +926,22 @@ function openProductModal(existing, onDone) {
         body.querySelector('[data-q="weightG"]').value = Number(qMain.weightG) / 1000;
       }
     }
-    uploader.setValue(existing.image);
-    body.querySelector('[data-f="name"]').value = existing.name || '';
-    body.querySelector('[data-f="amazonUrl"]').value = existing.amazonUrl || '';
-    body.querySelector('[data-f="productCategory"]').value = existing.productCategory || '';
-    body.querySelector('[data-f="description"]').value = existing.description || '';
+    const initImages = (src.images && src.images.length) ? src.images : (src.image ? [{ id: uid('img'), data: src.image, isMain: true }] : []);
+    gallery.setSilent(initImages);
+    body.querySelector('[data-f="name"]').value = src.name || '';
+    body.querySelector('[data-f="amazonUrl"]').value = src.amazonUrl || '';
+    body.querySelector('[data-f="productCategory"]').value = src.productCategory || '';
+    body.querySelector('[data-f="description"]').value = src.description || '';
+    selectedTier = PRICE_TIER_IDS.includes(src.selectedPriceTier) ? src.selectedPriceTier : 'aggressive';
     // 分类单选
-    const ec = CATEGORY_IDS.includes(existing.category) ? existing.category : CATEGORIES[0].id;
+    const ec = CATEGORY_IDS.includes(src.category) ? src.category : CATEGORIES[0].id;
     const ecInput = catRadio.querySelector(`input[value="${ec}"]`);
     if (ecInput) { ecInput.checked = true; catRadio.querySelectorAll('.cat-radio-item').forEach((l) => l.classList.toggle('active', l.querySelector('input').checked)); }
   }
   renderSiteChips();
   renderSiteCards();
   recomputeAll();
+  formReady = true;
 
   const footer = document.createElement('div');
   footer.style.cssText = 'display:flex;gap:10px;width:100%;';
@@ -751,7 +950,7 @@ function openProductModal(existing, onDone) {
   cancelBtn.textContent = '取消';
   const okBtn = document.createElement('button');
   okBtn.className = 'btn btn-primary';
-  okBtn.innerHTML = `${icon('check')} 保存`;
+  okBtn.innerHTML = `${icon('check')} 手动保存`;
   footer.appendChild(cancelBtn);
   footer.appendChild(okBtn);
 
@@ -761,10 +960,19 @@ function openProductModal(existing, onDone) {
     footer,
     width: 'wide',
   });
-  cancelBtn.onclick = m.close;
-  okBtn.onclick = () => {
-    const name = body.querySelector('[data-f="name"]').value.trim();
-    if (!name) { toastError('请填写产品名称'); return; }
+
+  // ---------- 实时自动保存 + 状态指示 ----------
+  const statusEl = document.createElement('div');
+  statusEl.className = 'save-status save-status--saved';
+  statusEl.innerHTML = '🟢 已保存';
+  statusEl.title = '点击重试（保存失败时）';
+  m.el.appendChild(statusEl);
+
+  let saveTimer = null;
+  const DRAFT_KEY = 'lib_draft_' + (existing ? existing.id : 'new');
+  function saveDraft(data) { try { localStorage.setItem(DRAFT_KEY, JSON.stringify({ ts: Date.now(), data })); } catch (_) {} }
+  function clearDraft() { try { localStorage.removeItem(DRAFT_KEY); } catch (_) {} }
+  function buildData() {
     const supplies = [];
     body.querySelectorAll('[data-supply-row]').forEach((row) => {
       const link = row.querySelector('[data-sl-link]').value.trim();
@@ -807,9 +1015,13 @@ function openProductModal(existing, onDone) {
     const mainSite = sites[0] || 'US';
     const catEl = body.querySelector('[data-cat-radio] input:checked');
     const cat = catEl ? catEl.value : CATEGORIES[0].id;
-    const data = {
-      image: uploader.getValue(),
-      name,
+    const images = gallery.getValue();
+    const mainImg = images.find((i) => i.isMain) || images[0];
+    const selTier = (lastTiers && lastTiers[selectedTier]) ? selectedTier : (PRICE_TIERS[0] ? PRICE_TIERS[0].id : 'balanced');
+    const price = (lastTiers && lastTiers[selTier]) ? lastTiers[selTier].price : '';
+    return {
+      image: mainImg ? mainImg.data : '',
+      name: body.querySelector('[data-f="name"]').value.trim(),
       amazonUrl: body.querySelector('[data-f="amazonUrl"]').value.trim(),
       category: cat,
       productCategory: body.querySelector('[data-f="productCategory"]').value.trim(),
@@ -818,12 +1030,76 @@ function openProductModal(existing, onDone) {
       supplies,
       quotes,
       quote: quotes[mainSite] || null,
+      images,
+      selectedPriceTier: selTier,
+      priceTiers: lastTiers || null,
+      price,
       description: body.querySelector('[data-f="description"]').value.trim(),
     };
-    if (existing) updateProductTracked(existing.id, data);
-    else addProductTracked(data);
-    toastSuccess(existing ? '已更新' : '已添加到选品库');
-    m.close();
-    onDone && onDone();
+  }
+  function setStatus(state, text) {
+    statusEl.className = 'save-status save-status--' + state;
+    statusEl.innerHTML = text;
+  }
+  function doSave() {
+    const data = buildData();
+    try {
+      if (isExisting) {
+        updateProductTracked(existing.id, data);
+        clearDraft();
+        setStatus('saved', '🟢 已保存');
+      } else {
+        saveDraft(data);
+        setStatus('saved', '🟢 草稿已保存');
+      }
+    } catch (e) {
+      saveDraft(data);
+      setStatus('error', '🔴 保存失败，点击重试');
+    }
+  }
+  function scheduleSave(kind) {
+    if (kind === 'input') {
+      setStatus('saving', '🟡 保存中...');
+      if (saveTimer) clearTimeout(saveTimer);
+      saveTimer = setTimeout(() => doSave(), 800);
+    } else {
+      if (saveTimer) clearTimeout(saveTimer);
+      doSave();
+    }
+  }
+  function persistNow() {
+    const data = buildData();
+    try {
+      if (isExisting) { updateProductTracked(existing.id, data); clearDraft(); }
+      else saveDraft(data);
+    } catch (_) { saveDraft(data); }
+  }
+  function cleanup() { window.removeEventListener('beforeunload', persistNow); }
+  statusEl.addEventListener('click', () => { if (statusEl.classList.contains('save-status--error')) doSave(); });
+  window.addEventListener('beforeunload', persistNow);
+
+  cancelBtn.onclick = () => { cleanup(); m.close(); };
+  okBtn.onclick = () => {
+    const name = body.querySelector('[data-f="name"]').value.trim();
+    if (!name) { toastError('请填写产品名称'); return; }
+    const data = buildData();
+    try {
+      if (isExisting) {
+        updateProductTracked(existing.id, data);
+        clearDraft();
+      } else {
+        const created = addProductTracked(data);
+        existing = created; isExisting = true; clearDraft();
+      }
+      setStatus('saved', '🟢 已保存');
+      toastSuccess('✅ 保存成功！');
+      cleanup();
+      m.close();
+      onDone && onDone();
+    } catch (e) {
+      saveDraft(data);
+      setStatus('error', '🔴 保存失败，点击重试');
+      toastError('❌ 保存失败，请检查网络');
+    }
   };
 }

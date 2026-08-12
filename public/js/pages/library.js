@@ -514,6 +514,27 @@ function openProductModal(existing, onDone) {
   // 三档报价展示价：先用 calculateQuote 算出「理论售价」（已含全部费率与目标利润率），
   // 再通过 apply99() 转 .99 结尾，并保证 展示价 >= 理论售价（利润率达标）。
   const gallery = createImageGallery({ onChange: () => scheduleSave('image') });
+  /**
+   * 把「输入框 + 展示链接」联动：输入非空则显示可点击链接（新窗口打开），否则隐藏。
+   * @returns {Function} sync 函数，可手动触发刷新
+   */
+  function wireLinkPreview(input, linkEl, textEl) {
+    function sync() {
+      const v = input.value.trim();
+      const u = normalizeUrl(v);
+      if (v && u) {
+        linkEl.href = u;
+        textEl.textContent = v; // 用 textContent 避免 XSS
+        linkEl.style.display = '';
+      } else {
+        linkEl.removeAttribute('href');
+        linkEl.style.display = 'none';
+      }
+    }
+    input.addEventListener('input', sync);
+    sync();
+    return sync;
+  }
   const body = document.createElement('div');
   body.innerHTML = `
     <div class="field">
@@ -525,8 +546,9 @@ function openProductModal(existing, onDone) {
       <input class="input" data-f="name" placeholder="例如：Portable Blender 便携榨汁杯">
     </div>
     <div class="field" style="margin-top:-6px">
-      <div class="field-label">Amazon 链接 <span class="hint">可选 · 展示为可跳转链接</span></div>
+      <div class="field-label">Amazon 链接 <span class="hint">可选 · 点击下方链接可新窗口打开</span></div>
       <input class="input" data-f="amazonUrl" placeholder="https://www.amazon.com/dp/B0XXXXXX 或 amazon.com/dp/B0XXXXXX">
+      <a class="link-open" data-amazon-link target="_blank" rel="noopener noreferrer" style="display:none">🔗 <span data-amazon-text></span> ↗</a>
     </div>
 
     <div class="form-section-title">存入分类 <span style="font-weight:400;font-size:12.5px;color:var(--text-faint)">选择产品归属的列表（可在列表中复制 / 移动）</span></div>
@@ -596,6 +618,13 @@ function openProductModal(existing, onDone) {
   `;
   body.querySelector('[data-uploader]').appendChild(gallery.el);
 
+  // Amazon 链接：输入框 + 可点击预览联动
+  const amazonSync = wireLinkPreview(
+    body.querySelector('[data-f="amazonUrl"]'),
+    body.querySelector('[data-amazon-link]'),
+    body.querySelector('[data-amazon-text]')
+  );
+
   // 分类单选高亮
   const catRadio = body.querySelector('[data-cat-radio]');
   catRadio.querySelectorAll('input').forEach((r) => {
@@ -624,12 +653,19 @@ function openProductModal(existing, onDone) {
         <div class="field" style="margin-bottom:8px">
           <div class="field-label">链接 / 供应商</div>
           <input class="input" data-sl-link placeholder="https://detail.1688.com/... 或供应商名称">
+          <a class="link-open" data-sl-link-open target="_blank" rel="noopener noreferrer" style="display:none">🔗 <span data-sl-link-text></span> ↗</a>
         </div>
         <div class="field" style="margin-bottom:0">
           <div class="field-label">规格颜色</div>
           <input class="input" data-sl-spec placeholder="例如：350ml 白色 / 500ml 粉色 / 粉色×3 个装">
         </div>`;
       suppliesBox.appendChild(row);
+      // 货源链接：输入框 + 可点击预览联动（保存 sync 以便加载已有值时刷新）
+      row._syncLink = wireLinkPreview(
+        row.querySelector('[data-sl-link]'),
+        row.querySelector('[data-sl-link-open]'),
+        row.querySelector('[data-sl-link-text]')
+      );
       row.querySelector('[data-del-supply]').addEventListener('click', () => {
         supplyCount--;
         renderSupplies();
@@ -650,6 +686,7 @@ function openProductModal(existing, onDone) {
       if (!row) return;
       row.querySelector('[data-sl-link]').value = s.link || '';
       row.querySelector('[data-sl-spec]').value = s.specColor || '';
+      if (row._syncLink) row._syncLink();
     });
   } else {
     supplyCount = 1;
@@ -943,6 +980,7 @@ function openProductModal(existing, onDone) {
     gallery.setSilent(initImages);
     body.querySelector('[data-f="name"]').value = src.name || '';
     body.querySelector('[data-f="amazonUrl"]').value = src.amazonUrl || '';
+    if (amazonSync) amazonSync();
     body.querySelector('[data-f="productCategory"]').value = src.productCategory || '';
     body.querySelector('[data-f="description"]').value = src.description || '';
     selectedTier = PRICE_TIER_IDS.includes(src.selectedPriceTier) ? src.selectedPriceTier : 'aggressive';

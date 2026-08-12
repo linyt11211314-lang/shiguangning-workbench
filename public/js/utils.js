@@ -113,11 +113,14 @@ export function clean(str) {
   return String(str ?? '').replace(/\s+/g, ' ').trim();
 }
 
-/** URL 规范化：自动补全协议（https://） */
+/** URL 规范化：自动补全协议（https://）；拒绝 javascript:/data:/file: 等非 http(s)/ftp 协议，防 XSS */
 export function normalizeUrl(url) {
   const u = String(url || '').trim();
   if (!u) return '';
+  // 非 http(s)/ftp 协议（javascript:、data:、file:、mailto: 等）一律拒绝
+  if (/^[a-z][a-z0-9+.-]*:/i.test(u) && !/^(https?|ftp):/i.test(u)) return '';
   if (/^(https?|ftp):\/\//i.test(u)) return u;
+  if (u.startsWith('//')) return 'https:' + u; // 协议相对形式 //example.com
   // 支持 amazon.cn 等带域名形式
   return `https://${u}`;
 }

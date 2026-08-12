@@ -507,7 +507,7 @@ function createImageGallery({ onChange } = {}) {
 
 /** 产品添加/编辑弹窗 */
 function openProductModal(existing, onDone) {
-  const isExisting = Boolean(existing);
+  let isExisting = Boolean(existing);
   let selectedTier = 'aggressive';
   let lastTiers = {};
   let formReady = false;
@@ -897,16 +897,20 @@ function openProductModal(existing, onDone) {
     if (sr) body.querySelector('[data-q="seaFreightRate"]').value = sr;
   }
 
-  // 草稿恢复：刷新后尝试恢复未保存数据（仅当草稿比已存数据新）
+  // 草稿恢复：编辑已有产品时，刷新后尝试恢复未保存数据（仅当草稿比已存数据新）
+  // 新建产品：始终打开空白表单 —— 不恢复、并清除可能残留的草稿，避免「添加产品」被上次未保存/未完成的草稿污染（如误显示「太阳镜收纳盒」等已有产品数据）
   let src = existing;
   const draftKey = 'lib_draft_' + (existing ? existing.id : 'new');
+  if (!existing) {
+    try { localStorage.removeItem(draftKey); } catch (_) {}
+  }
   try {
     const raw = localStorage.getItem(draftKey);
-    if (raw) {
+    if (raw && existing) {
       const d = JSON.parse(raw);
-      if (d && d.data && (!existing || d.ts > (existing.updatedAt || 0))) {
-        src = existing ? { ...existing, ...d.data } : d.data;
-        if (existing) toastInfo('已恢复上次未保存的草稿');
+      if (d && d.data && d.ts > (existing.updatedAt || 0)) {
+        src = { ...existing, ...d.data };
+        toastInfo('已恢复上次未保存的草稿');
       }
     }
   } catch (_) {}
@@ -1095,12 +1099,16 @@ function openProductModal(existing, onDone) {
       if (isExisting) {
         updateProductTracked(existing.id, data);
         clearDraft();
+        setStatus('saved', '🟢 已保存');
+        toastSuccess('✅ 保存成功！');
       } else {
         const created = addProductTracked(data);
         existing = created; isExisting = true; clearDraft();
+        setStatus('saved', '🟢 已保存');
+        toastSuccess('✅ 产品添加成功');
+        // 保存后自动切换到产品所在分类，确保新记录立即可见
+        currentCategory = data.category || CATEGORIES[0].id;
       }
-      setStatus('saved', '🟢 已保存');
-      toastSuccess('✅ 保存成功！');
       cleanup();
       m.close();
       onDone && onDone();

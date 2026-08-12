@@ -6,7 +6,7 @@ import { icon } from '../ui/icons.js';
 import { esc, normalizeUrl, formatDate, fileToDataURL, extractImageFromEvent, uid } from '../utils.js';
 import { listProducts, getProduct, addProductTracked, updateProductTracked, removeProductTracked } from '../store/productStore.js';
 import { getSettings } from '../store/settingsStore.js';
-import { AMAZON_SITES, PER_SITE_RATES, CATEGORIES, CATEGORY_IDS, categoryLabel, PRICE_TIERS, priceTierById, MAX_IMAGES, MAX_IMAGE_MB, ALLOWED_IMAGE_TYPES } from '../config.js';
+import { AMAZON_SITES, PER_SITE_RATES, CATEGORIES, CATEGORY_IDS, categoryLabel, PRICE_TIERS, PRICE_TIER_IDS, priceTierById, MAX_IMAGES, MAX_IMAGE_MB, ALLOWED_IMAGE_TYPES } from '../config.js';
 import { openModal, confirmDialog } from '../ui/modal.js';
 import { toastSuccess, toastError, toastInfo } from '../ui/toast.js';
 import { calculateQuote, DEFAULT_QUOTE, quickQuote, calcChargeableWeight } from '../services/pricing.js';
@@ -223,7 +223,7 @@ export function render(container, { navigate, rerender }) {
     const allChecked = list.every((p) => selectedIds.has(p.id));
 
     grid.innerHTML = `
-      <div class="card" style="overflow:hidden">
+      <div class="card" style="overflow:visible">
         <div class="lib-grid-table">
           <div class="lib-table-head">
             <label class="lib-check" title="全选"><input type="checkbox" data-check-all ${allChecked ? 'checked' : ''}></label>

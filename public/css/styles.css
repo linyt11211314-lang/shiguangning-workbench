@@ -685,7 +685,7 @@ html, body {
   user-select: none;
 }
 .lib-table-row:last-child { border-bottom: none; }
-.lib-table-row:hover { background: var(--hover-bg); }
+.lib-table-row:hover { background: var(--hover-bg); transform: translateY(-2px); box-shadow: 0 4px 14px rgba(20,30,50,.12); position: relative; z-index: 2; transition: background .12s ease, transform .12s ease, box-shadow .12s ease; }
 .lib-table-row.selected { background: var(--primary-soft); }
 .lib-check { display: flex; align-items: center; justify-content: center; }
 .lib-check input { width: 16px; height: 16px; accent-color: var(--primary); cursor: pointer; }

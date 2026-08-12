@@ -740,7 +740,7 @@ function openProductModal(existing, onDone) {
           <label class="sq-item"><span>仓储 %</span><input class="input input-sm" type="number" min="0" max="10" step="0.1" data-sq="storageRate" value="${f.storageRate}"></label>
           <label class="sq-item"><span>退货率 %</span><input class="input input-sm" type="number" min="0" max="50" step="0.5" data-sq="returnRate" value="${f.returnRate}"></label>
           <label class="sq-item"><span>FBA 费</span><input class="input input-sm" type="number" min="0" step="0.01" data-sq="fbaFee" value="${f.fbaFee}" placeholder="如 4.46"><span class="sq-curr">${si.symbol}</span></label>
-          <label class="sq-item"><span>头程费</span><input class="input input-sm" type="number" min="0" step="0.01" data-sq="shippingPerUnit" value="${f.shippingPerUnit}" placeholder="同步长宽高重量和采购价"><span class="sq-curr">${si.symbol}·计费重×单价÷汇率</span></label>
+          <label class="sq-item sq-ship"><span>头程费</span><input class="input input-sm" type="number" min="0" step="0.01" data-sq="shippingPerUnit" value="${f.shippingPerUnit}"><span class="sq-curr">${si.symbol}·计费重×单价÷汇率</span><div class="sq-ship-preview" data-sq-ship-preview></div></label>
         </div>
         <div class="sq-result" data-sq-result></div>`;
       cardsBox.appendChild(card);
@@ -782,6 +782,13 @@ function openProductModal(existing, onDone) {
       const f = readSiteFields(code);
       const resEl = card.querySelector('[data-sq-result]');
       const shipInput = card.querySelector('[data-sq="shippingPerUnit"]');
+      const shipPrev = card.querySelector('[data-sq-ship-preview]');
+      if (shipPrev) {
+        const fmt = (v) => (v === '' || v == null) ? '—' : v;
+        const wtKg = (base.weightG === '' || base.weightG == null) ? '—' : Number(base.weightG).toFixed(2);
+        const shipVal = (f.shippingPerUnit === '' || f.shippingPerUnit == null) ? '—' : f.shippingPerUnit;
+        shipPrev.innerHTML = `同步预览 · 长 ${fmt(base.lengthCm)} × 宽 ${fmt(base.widthCm)} × 高 ${fmt(base.heightCm)} cm · 重 ${wtKg} kg · 采购价 ¥${fmt(base.cost)} · 计费重 ${cw.chargeable} kg · 头程 ≈ ${si.symbol}${shipVal}`;
+      }
       const seaRate = Number(base.seaFreightRate) || 0;
       const exch = Number(f.exchangeRate) || 0;
       if (!shipInput.dataset.manual && cw.chargeable > 0 && seaRate > 0 && exch > 0) {

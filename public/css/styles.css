@@ -1154,6 +1154,13 @@ html, body {
 .neg { color: var(--red); }
 .comm-actual { max-width: 130px; }
 
+/* 月度记录：月份选择器 + 保存 */
+.month-save-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
+.ms-label { font-size: 13.5px; color: var(--text-sub); }
+.month-select { width: auto; min-width: 130px; }
+.comm-table tbody tr[data-load] { cursor: pointer; }
+.comm-table tbody tr[data-load]:hover { background: var(--card-soft); }
+
 .comm-footer { display: flex; align-items: center; gap: 10px; margin-top: 6px; padding: 14px 4px 4px; font-size: 12.5px; color: var(--text-sub); border-top: 1px solid var(--border); }
 .comm-footer-dev { color: var(--text-faint); }
 

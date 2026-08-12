@@ -13,6 +13,7 @@
 import { icon } from '../ui/icons.js';
 import { esc, uid } from '../utils.js';
 import { toastSuccess, toastError, toastInfo } from '../ui/toast.js';
+import { confirmDialog } from '../ui/modal.js';
 
 const STORE_KEY = 'sgn.commission.v1';
 
@@ -45,6 +46,30 @@ function load() {
     return defaults();
   }
 }
+
+/**
+ * 生成最近 n 个月（含当月），格式 2026-08。
+ * endOffset=0 → 以当前月为最新；endOffset=1 → 以上月为最新。
+ * 默认返回最近 24 个月，数组首项为最新月。
+ */
+function lastMonths(n, endOffset = 0) {
+  const arr = [];
+  const now = new Date();
+  for (let i = endOffset; i < n + endOffset; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    arr.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
+  }
+  return arr;
+}
+
+/** 需要随月份存档/加载的字段（页面所有可输入数据快照） */
+const SNAP_KEYS = [
+  'aeSales', 'aeProfit', 'saSales', 'saProfit',
+  'passedDays', 'totalDays', 'commissionRate', 'aeVatRate', 'saVatRate',
+  'baseSalary', 'insurance',
+  'bankBalance', 'wechatBalance',
+  'fixedRepay', 'dailyExpense', 'rent', 'investment', 'saving', 'reserve',
+];
 
 /** ¥ 千分位 + 两位小数；负数显示 −¥ */
 function fmt(n) {
@@ -90,6 +115,27 @@ export function render(container, { navigate, rerender }) {
     const planExpense = g('fixedRepay') + g('dailyExpense') + g('rent') + g('investment') + g('saving') + g('reserve');
     const available = takeHome + g('bankBalance') + g('wechatBalance') - planExpense;
     return { ae, sa, totalComm, takeHome, planExpense, available, passed, rate };
+  }
+
+  /** 抓取页面当前所有数据作为快照 */
+  function snapshot() {
+    const s = {};
+    for (const k of SNAP_KEYS) s[k] = state[k];
+    return s;
+  }
+  /** 把某月快照灌回页面（加载历史记录时使用） */
+  function applySnapshot(s) {
+    if (!s) return;
+    for (const k of SNAP_KEYS) if (k in s) state[k] = s[k];
+    container.querySelectorAll('[data-bind]').forEach((el) => {
+      const v = state[el.dataset.bind];
+      el.value = (v === '' || v == null) ? '' : v;
+    });
+    const r = recalc();
+    paint(r);
+    const r2 = container.querySelector('#ae-rate2'); if (r2) r2.textContent = `${g('commissionRate')}%`;
+    const r3 = container.querySelector('#sa-rate2'); if (r3) r3.textContent = `${g('commissionRate')}%`;
+    scheduleSave();
   }
 
   const set = (id, val) => { const el = container.querySelector('#' + id); if (el) el.textContent = val; };
@@ -179,6 +225,8 @@ export function render(container, { navigate, rerender }) {
       </div>`;
   }
 
+  const defaultMonth = lastMonths(24)[1]; // 默认选中上个月
+
   container.innerHTML = `
     <div class="comm-intro">
       <div class="comm-intro-icon">${icon('target')}</div>
@@ -263,10 +311,16 @@ export function render(container, { navigate, rerender }) {
       <div class="section-head">
         <div class="section-title">📈 月度记录与趋势</div>
         <span style="flex:1"></span>
-        <button class="btn btn-primary btn-sm" data-save-month>${icon('save')} 保存当前月份</button>
         <button class="btn btn-soft btn-sm" data-export>${icon('download')} 导出历史数据</button>
       </div>
-      <div class="field-tip" style="margin-bottom:12px">保存月份后，预计与实际提成会在这里对比；实际提成公布后直接填写即可自动算差额。</div>
+      <div class="field-tip" style="margin-bottom:12px">选择任意月份并保存，预计与实际提成会在这里对比；实际提成公布后直接填写即可自动算差额。点击记录行可把该月数据加载回页面。</div>
+      <div class="month-save-row">
+        <span class="ms-label">保存月份：</span>
+        <select class="input input-sm month-select" data-month-select>
+          ${lastMonths(24).map((m) => `<option value="${m}"${m === defaultMonth ? ' selected' : ''}>${m}</option>`).join('')}
+        </select>
+        <button class="btn btn-primary btn-sm" data-save-month>${icon('save')} 保存该月数据</button>
+      </div>
       <div data-records></div>
     </div>
 
@@ -294,7 +348,7 @@ export function render(container, { navigate, rerender }) {
         <div class="empty-state" style="padding:30px 20px">
           <div class="empty-icon">${icon('calendar')}</div>
           <div class="empty-title">暂无月度记录</div>
-          <div class="empty-sub">点击「保存当前月份」把当前预计提成归档</div>
+          <div class="empty-sub">选择月份后点击「保存该月数据」把当前预计提成归档</div>
         </div>`;
       return;
     }
@@ -308,7 +362,7 @@ export function render(container, { navigate, rerender }) {
             const diff = r.actual - r.est;
             const cls = diff >= 0 ? 'pos' : 'neg';
             return `
-            <tr>
+            <tr data-load="${r.id}" title="点击加载该月数据">
               <td class="mono">${esc(r.month)}</td>
               <td class="mono">${fmt(r.est)}</td>
               <td><input class="input input-sm comm-actual" type="number" inputmode="decimal" step="any" data-actual="${r.id}" value="${r.actual == null ? 0 : r.actual}"></td>
@@ -352,7 +406,7 @@ export function render(container, { navigate, rerender }) {
     }
   });
 
-  // 删除月度记录
+  // 删除 / 加载月度记录
   container.addEventListener('click', (e) => {
     const delEl = e.target.closest('[data-del]');
     if (delEl) {
@@ -360,22 +414,55 @@ export function render(container, { navigate, rerender }) {
       state.records = state.records.filter((x) => x.id !== id);
       renderRecords();
       scheduleSave();
+      return;
+    }
+    // 点击记录行加载该月数据（忽略表格内的输入框/按钮）
+    const loadEl = e.target.closest('[data-load]');
+    if (loadEl && !e.target.closest('input, button')) {
+      const rec = state.records.find((x) => x.id === loadEl.dataset.load);
+      if (rec && rec.snapshot) {
+        applySnapshot(rec.snapshot);
+        const ms = container.querySelector('[data-month-select]');
+        if (ms) ms.value = rec.month;
+        toastInfo(`已加载 ${rec.month} 的数据，可修改后重新保存`);
+      }
+      return;
     }
   });
 
-  // 保存当前月份
+  // 保存所选月份（支持任意月份 + 覆盖确认）
   container.querySelector('[data-save-month]').addEventListener('click', () => {
+    const monthSel = container.querySelector('[data-month-select]');
+    const month = monthSel ? monthSel.value : (() => {
+      const n = new Date();
+      return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}`;
+    })();
     const r = recalc();
-    const now = new Date();
-    const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
     const est = Math.round(r.totalComm * 100) / 100;
     const ex = state.records.find((x) => x.month === month);
-    if (ex) ex.est = est;
-    else state.records.unshift({ id: uid('rec'), month, est, actual: 0 });
-    state.records.sort((a, b) => b.month.localeCompare(a.month));
-    renderRecords();
-    scheduleSave();
-    toastSuccess(`已保存 ${month} 预计提成 ${fmt(est)}`);
+    const doSave = () => {
+      if (ex) {
+        ex.est = est;
+        ex.snapshot = snapshot();
+      } else {
+        state.records.unshift({ id: uid('rec'), month, est, actual: 0, snapshot: snapshot() });
+      }
+      state.records.sort((a, b) => b.month.localeCompare(a.month));
+      renderRecords();
+      scheduleSave();
+      toastSuccess(`✅ ${month} 数据已保存`);
+    };
+    if (ex) {
+      confirmDialog({
+        title: '⚠️ 月份已存在',
+        message: `${month} 已有保存记录，是否覆盖？\n覆盖后将用当前页面数据替换该月记录。`,
+        confirmText: '覆盖',
+        danger: true,
+        onConfirm: doSave,
+      });
+    } else {
+      doSave();
+    }
   });
 
   // 导出历史数据

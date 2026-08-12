@@ -6,7 +6,7 @@ import { icon } from './ui/icons.js';
 import { esc } from './utils.js';
 import { hasApiKey, getSettings, maskedKey, applyTheme } from './store/settingsStore.js';
 import { onProjectsChange } from './store/projectStore.js';
-import { onProductsChange } from './store/productStore.js';
+import { onProductsChange, countProducts } from './store/productStore.js';
 import { render as renderHome } from './pages/home.js';
 import { render as renderLibrary } from './pages/library.js';
 import { render as renderListing } from './pages/listing.js';
@@ -71,10 +71,11 @@ function renderShell() {
 
   // 顶栏
   const meta = TITLES[page] || TITLES.home;
+  const titleText = page === 'library' ? `选品库 (共${countProducts()}个产品)` : meta.title;
   const topbar = document.getElementById('topbar');
   topbar.innerHTML = `
     <div>
-      <div class="topbar-title">${meta.title}</div>
+      <div class="topbar-title">${titleText}</div>
       <div class="topbar-sub">${meta.sub}</div>
     </div>
     <span class="topbar-spacer"></span>

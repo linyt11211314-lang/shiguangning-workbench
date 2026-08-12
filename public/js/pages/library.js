@@ -1,11 +1,12 @@
 /**
  * 选品库页面：产品素材管理，一键导入 AI Listing 工坊
+ * 三大分类（列表）：牛马人 / 昭梧 / 沣洋，产品可在分类间复制、移动。
  */
 import { icon } from '../ui/icons.js';
 import { esc, normalizeUrl, formatDate } from '../utils.js';
-import { listProducts, addProductTracked, updateProductTracked, removeProductTracked } from '../store/productStore.js';
+import { listProducts, getProduct, addProductTracked, updateProductTracked, removeProductTracked } from '../store/productStore.js';
 import { getSettings } from '../store/settingsStore.js';
-import { AMAZON_SITES, PER_SITE_RATES } from '../config.js';
+import { AMAZON_SITES, PER_SITE_RATES, CATEGORIES, CATEGORY_IDS, categoryLabel } from '../config.js';
 import { openModal, confirmDialog } from '../ui/modal.js';
 import { toastSuccess, toastError, toastInfo } from '../ui/toast.js';
 import { createImageUploader } from '../ui/fields.js';
@@ -15,63 +16,121 @@ import { exportProductsExcel, importProductsExcel } from '../services/productTra
 let filter = '';
 let currentPage = 0;
 let selectedIds = new Set();
+let currentCategory = CATEGORIES[0].id;
+
+/* ---------------- 复制 / 移动 ---------------- */
+function copyProductTo(id, targetCat) {
+  const p = getProduct(id);
+  if (!p) return;
+  const { id: _id, ...rest } = p;
+  addProductTracked({ ...rest, category: targetCat });
+  toastSuccess(`已复制到「${categoryLabel(targetCat)}」`);
+}
+function moveProductTo(id, targetCat) {
+  const p = getProduct(id);
+  if (!p) return;
+  const { id: _id, ...rest } = p;
+  removeProductTracked(id);
+  addProductTracked({ ...rest, category: targetCat });
+  toastSuccess(`已移动到「${categoryLabel(targetCat)}」`);
+}
+
+/* ---------------- 下拉菜单（复制/移动到哪个分类） ---------------- */
+let activeMenu = null;
+function closeCategoryMenu() {
+  if (activeMenu) { activeMenu.remove(); activeMenu = null; }
+  document.removeEventListener('click', onDocClickClose, true);
+}
+function onDocClickClose(e) {
+  if (activeMenu && !activeMenu.contains(e.target)) closeCategoryMenu();
+}
+function openCategoryMenu(anchor, heading, excludeId, onPick) {
+  closeCategoryMenu();
+  const menu = document.createElement('div');
+  menu.className = 'menu-pop';
+  menu.innerHTML = `
+    <div class="menu-pop-head">${esc(heading)}</div>
+    ${CATEGORIES.filter((c) => c.id !== excludeId).map((c) => `
+      <div class="menu-pop-item" data-cat="${c.id}">${esc(c.label)}</div>`).join('')}
+  `;
+  document.body.appendChild(menu);
+  activeMenu = menu;
+  const r = anchor.getBoundingClientRect();
+  const mw = 170, mh = 96;
+  let top = r.bottom + 6;
+  let left = r.left;
+  if (left + mw > window.innerWidth - 8) left = window.innerWidth - mw - 8;
+  if (top + mh > window.innerHeight - 8) top = Math.max(8, r.top - mh - 6);
+  menu.style.top = Math.max(8, top) + 'px';
+  menu.style.left = Math.max(8, left) + 'px';
+  menu.addEventListener('click', (e) => e.stopPropagation());
+  menu.querySelectorAll('[data-cat]').forEach((el) => {
+    el.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const target = el.dataset.cat;
+      closeCategoryMenu();
+      onPick(target);
+    });
+  });
+  setTimeout(() => document.addEventListener('click', onDocClickClose, true), 0);
+}
+function openMenuForProduct(id, type, anchorEl) {
+  const p = getProduct(id);
+  if (!p) return;
+  const anchor = anchorEl || container.querySelector(`.lib-table-row[data-id="${id}"]`) || container;
+  openCategoryMenu(anchor, type === 'copy' ? '复制到...' : '移动到...', p.category, (targetCat) => {
+    if (type === 'copy') copyProductTo(id, targetCat);
+    else moveProductTo(id, targetCat);
+  });
+}
 
 export function render(container, { navigate, rerender }) {
   currentPage = 0;
   const products = listProducts();
+  const counts = {};
+  CATEGORIES.forEach((c) => { counts[c.id] = products.filter((p) => p.category === c.id).length; });
+  const total = products.length;
 
-  const sites = [...new Set(products.map((p) => p.site).filter(Boolean))];
-  const metrics = [
-    { label: '选品库产品', value: products.length, icon: 'box', cls: 'blue', sub: '全部产品素材' },
-    { label: '覆盖站点', value: sites.length, icon: 'globe', cls: 'green', sub: sites.length ? sites.join(' / ') : '尚未覆盖' },
-    { label: '含图产品', value: products.filter((p) => p.image).length, icon: 'image', cls: 'primary', sub: '已上传产品图片' },
-    { label: '1688 货源', value: products.filter((p) => p.supply1688).length, icon: 'link', cls: 'amber', sub: '关联 1688 信息' },
-  ];
-  const iconColors = {
-    primary: { bg: 'linear-gradient(135deg,var(--grad-p1),var(--grad-p2))', fg: 'var(--grad-pfg)' },
-    green: { bg: 'linear-gradient(135deg,var(--grad-g1),var(--grad-g2))', fg: 'var(--grad-gfg)' },
-    blue: { bg: 'linear-gradient(135deg,var(--grad-b1),var(--grad-b2))', fg: 'var(--grad-bfg)' },
-    amber: { bg: 'linear-gradient(135deg,var(--grad-a1),var(--grad-a2))', fg: 'var(--grad-afg)' },
-  };
+  const tabsHtml = CATEGORIES.map((c) => `
+    <button class="cat-tab ${c.id === currentCategory ? 'active' : ''}" data-tab="${c.id}">
+      <span>${esc(c.label)}</span>
+      <span class="badge">${counts[c.id]}</span>
+    </button>`).join('');
 
   container.innerHTML = `
-    <div class="metrics-row" data-metrics>
-      ${metrics.map((m) => {
-        const c = iconColors[m.cls];
-        return `
-        <div class="metric-card">
-          <div class="metric-icon" style="background:${c.bg};color:${c.fg}">${icon(m.icon)}</div>
-          <div class="metric-body">
-            <div class="metric-value">${m.value}</div>
-            <div class="metric-label">${m.label}</div>
-            <div class="metric-trend">${esc(m.sub)}</div>
-          </div>
-        </div>`;
-      }).join('')}
+    <div class="cat-tabs">
+      ${tabsHtml}
+      <span class="topbar-spacer"></span>
+      <button class="btn btn-primary" data-add>${icon('plus')} 添加产品</button>
+      <button class="btn btn-ghost" data-export>${icon('file')} 导出 Excel</button>
+      <button class="btn btn-soft" data-import-excel>${icon('upload')} 导入 Excel</button>
     </div>
 
-    <div class="card" style="padding:14px 18px;margin-bottom:18px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+    <div class="card" style="padding:12px 16px;margin-bottom:16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
       <div class="flex-1" style="position:relative;min-width:220px">
         <span class="search-icon">${icon('search')}</span>
         <input class="input" data-search placeholder="搜索产品名称 / 类目 / 1688链接..." style="padding-left:38px;background:var(--card-soft)">
       </div>
       <button class="btn btn-danger-soft" data-bulk-del style="display:none" title="批量删除所选产品">${icon('trash')} 删除所选(<span data-bulk-count>0</span>)</button>
-      <button class="btn btn-ghost" data-export title="导出产品库为 Excel">${icon('file')} 导出 Excel</button>
-      <button class="btn btn-soft" data-import-excel title="用同一模板导入产品">${icon('upload')} 导入 Excel</button>
-      <button class="btn btn-primary" data-add>${icon('plus')} 添加产品</button>
-      <input type="file" accept=".xlsx,.xls" data-excel-file hidden>
     </div>
 
     <div data-grid></div>
+    <input type="file" accept=".xlsx,.xls" data-excel-file hidden>
   `;
+
+  // 分类 Tab 切换
+  container.querySelectorAll('[data-tab]').forEach((tab) => {
+    tab.addEventListener('click', () => {
+      currentCategory = tab.dataset.tab;
+      rerender();
+    });
+  });
 
   container.querySelector('[data-search]').addEventListener('input', (e) => {
     filter = e.target.value.trim().toLowerCase();
     renderGrid();
   });
-  container.querySelector('[data-add]').addEventListener('click', () => openProductModal(null, () => {
-    rerender();
-  }));
+  container.querySelector('[data-add]').addEventListener('click', () => openProductModal(null, () => {}));
 
   // ---------- 导出 Excel ----------
   container.querySelector('[data-export]').addEventListener('click', () => {
@@ -84,21 +143,21 @@ export function render(container, { navigate, rerender }) {
   });
 
   // ---------- 导入 Excel ----------
-  const excelFile = container.querySelector('[data-excel-file]');
+  const fileInput = container.querySelector('[data-excel-file]');
   container.querySelector('[data-import-excel]').addEventListener('click', () => {
     confirmDialog({
       title: '导入 Excel 产品',
-      message: '请使用「导出 Excel」生成的同一模板（含表头）填写产品数据后导入。\n\n产品名称必填；报价列可留空，系统将按成本/尺寸重量自动重新测算。',
+      message: '请使用「导出 Excel」生成的同一模板（含表头）填写产品数据后导入。\n\n产品名称必填；报价列可留空，系统将按成本/尺寸重量自动重新测算。\n带「分类」列时按列归类，否则归入当前分类「' + categoryLabel(currentCategory) + '」。',
       confirmText: '选择文件',
-      onConfirm: () => excelFile.click(),
+      onConfirm: () => fileInput.click(),
     });
   });
-  excelFile.addEventListener('change', async () => {
-    const file = excelFile.files[0];
-    excelFile.value = '';
+  fileInput.addEventListener('change', async () => {
+    const file = fileInput.files[0];
+    fileInput.value = '';
     if (!file) return;
     try {
-      const { count, skipped } = await importProductsExcel(file);
+      const { count, skipped } = await importProductsExcel(file, currentCategory);
       if (count > 0) {
         toastSuccess(`成功导入 ${count} 个产品${skipped ? `，跳过 ${skipped} 行（缺产品名称）` : ''}`);
         rerender();
@@ -112,6 +171,22 @@ export function render(container, { navigate, rerender }) {
     }
   });
 
+  // 快捷键：选中单个产品后 Ctrl+C 复制 / Ctrl+X 移动
+  if (!container.__libKeyBound) {
+    container.addEventListener('keydown', (e) => {
+      if (!(e.ctrlKey || e.metaKey)) return;
+      const k = e.key.toLowerCase();
+      if ((k === 'c' || k === 'x') && selectedIds.size === 1) {
+        const tag = e.target.tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+        e.preventDefault();
+        const id = [...selectedIds][0];
+        openMenuForProduct(id, k === 'c' ? 'copy' : 'move');
+      }
+    });
+    container.__libKeyBound = true;
+  }
+
   function updateBulkBar() {
     const btn = container.querySelector('[data-bulk-del]');
     if (!btn) return;
@@ -123,10 +198,10 @@ export function render(container, { navigate, rerender }) {
 
   function renderGrid() {
     const grid = container.querySelector('[data-grid]');
-    let list = products;
+    let list = products.filter((p) => p.category === currentCategory);
     if (filter) {
       list = list.filter((p) =>
-        `${p.name} ${p.category} ${p.supply1688} ${p.description}`.toLowerCase().includes(filter));
+        `${p.name} ${p.productCategory} ${p.supply1688} ${p.description}`.toLowerCase().includes(filter));
     }
     // 清理已不存在的选中项
     const validIds = new Set(list.map((p) => p.id));
@@ -135,13 +210,13 @@ export function render(container, { navigate, rerender }) {
     if (!list.length) {
       grid.innerHTML = `
         <div class="card"><div class="empty-state">
-          <div class="empty-icon">${icon('box')}</div>
-          <div class="empty-title">${filter ? '没有匹配的产品' : '选品库还是空的'}</div>
-          <div class="empty-sub">${filter ? '换个关键词试试' : '添加产品素材，或直接在 AI Listing 工坊独立创建'}</div>
-          ${filter ? '' : '<div class="mt-12"><button class="btn btn-primary" data-add2>添加第一个产品</button></div>'}
+          <div class="empty-icon" style="font-size:34px">📭</div>
+          <div class="empty-title">${filter ? '没有匹配的产品' : '该分类暂无产品'}</div>
+          <div class="empty-sub">${filter ? '换个关键词试试' : '点击「添加产品」或导入 Excel 添加'}</div>
+          ${filter ? '' : '<div class="mt-12"><button class="btn btn-primary" data-add2>添加产品</button></div>'}
         </div></div>`;
       const add2 = grid.querySelector('[data-add2]');
-      if (add2) add2.addEventListener('click', () => openProductModal(null, () => rerender()));
+      if (add2) add2.addEventListener('click', () => openProductModal(null, () => {}));
       updateBulkBar();
       return;
     }
@@ -164,18 +239,15 @@ export function render(container, { navigate, rerender }) {
           </div>
           ${list.map((p) => {
           const siteInfo = AMAZON_SITES.find((s) => s.code === p.site);
-          // 列表价格/利润一律用新公式实时重算（不依赖旧 quote.result）
           const r = quickQuote(p.quote, p.site);
           const sym = (r && r.symbol) || (siteInfo && siteInfo.symbol) || '$';
           const costText = r && r.breakdown && r.breakdown.costUsd != null ? `${sym}${r.breakdown.costUsd}` : '—';
           const priceText = r && r.price != null ? `${sym}${r.price}` : '—';
-          // 规格：长×宽×高cm / 重量kg（内部存 g，展示转 kg）
           const lwh = [p.quote && p.quote.lengthCm, p.quote && p.quote.widthCm, p.quote && p.quote.heightCm].filter((v) => v !== '' && v != null);
           const wt = p.quote && p.quote.weightG;
           const wtKg = (wt != null && wt !== '') ? Math.round((Number(wt) / 1000) * 1000) / 1000 : null;
           const wtText = wtKg != null ? `${wtKg}kg` : '';
           const sizeText = (lwh.length === 3 && wtKg != null) ? `${lwh[0]}×${lwh[1]}×${lwh[2]}cm · ${wtText}` : (lwh.length || wtKg != null ? `${lwh.join('×')}${lwh.length && wtKg != null ? ' · ' : ''}${wtText}` : '—');
-          // 利润总览
           const profitText = r && r.profit != null ? `${sym}${r.profit} · ${Math.round((r.margin || 0) * 100)}%` : '—';
           const rowSel = selectedIds.has(p.id);
           return `
@@ -187,7 +259,7 @@ export function render(container, { navigate, rerender }) {
             <div class="lib-name-cell">
               <div class="lib-name">${esc(p.name || '未命名产品')}</div>
               <div class="lib-meta" style="margin-top:4px">
-                ${p.category ? `<span class="tag tag-primary">${esc(p.category)}</span>` : ''}
+                ${p.productCategory ? `<span class="tag tag-primary">${esc(p.productCategory)}</span>` : ''}
                 ${(p.sites || [p.site]).map((s) => {
                   const si = AMAZON_SITES.find((x) => x.code === s);
                   return `<span class="tag tag-blue">${si ? si.flag + ' ' + s : esc(s)}</span>`;
@@ -204,13 +276,14 @@ export function render(container, { navigate, rerender }) {
               <button class="btn btn-primary btn-sm" data-import="${p.id}">${icon('sparkles')} 创建 Listing</button>
               <button class="btn btn-ghost btn-sm" data-edit="${p.id}">${icon('edit')} 编辑</button>
               <button class="btn btn-danger-soft btn-sm" data-del="${p.id}">${icon('trash')} 删除</button>
+              <button class="btn btn-soft btn-sm" data-copy="${p.id}">${icon('copy')} 复制 ▾</button>
+              <button class="btn btn-soft btn-sm" data-move="${p.id}">移动 ▾</button>
             </div>
           </div>`;
         }).join('')}
         </div>
       </div>`;
 
-    // 全选 / 取消全选
     const checkAll = grid.querySelector('[data-check-all]');
     checkAll.addEventListener('change', () => {
       if (checkAll.checked) list.forEach((p) => selectedIds.add(p.id));
@@ -221,7 +294,6 @@ export function render(container, { navigate, rerender }) {
       });
       updateBulkBar();
     });
-    // 行勾选
     grid.querySelectorAll('[data-check]').forEach((cb) => {
       cb.addEventListener('change', (e) => {
         e.stopPropagation();
@@ -234,12 +306,11 @@ export function render(container, { navigate, rerender }) {
         updateBulkBar();
       });
     });
-    // 点击行 → 编辑（按钮区域除外）
     grid.querySelectorAll('.lib-table-row').forEach((row) => {
       row.addEventListener('click', (e) => {
         if (e.target.closest('button') || e.target.closest('a') || e.target.closest('.lib-check')) return;
         const p = listProducts().find((x) => x.id === row.dataset.id);
-        if (p) openProductModal(p, () => rerender());
+        if (p) openProductModal(p, () => {});
       });
     });
     grid.querySelectorAll('[data-import]').forEach((btn) => {
@@ -252,7 +323,7 @@ export function render(container, { navigate, rerender }) {
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
         const p = listProducts().find((x) => x.id === btn.dataset.edit);
-        if (p) openProductModal(p, () => rerender());
+        if (p) openProductModal(p, () => {});
       });
     });
     grid.querySelectorAll('[data-del]').forEach((btn) => {
@@ -270,6 +341,18 @@ export function render(container, { navigate, rerender }) {
             rerender();
           },
         });
+      });
+    });
+    grid.querySelectorAll('[data-copy]').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openMenuForProduct(btn.dataset.copy, 'copy', btn);
+      });
+    });
+    grid.querySelectorAll('[data-move]').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openMenuForProduct(btn.dataset.move, 'move', btn);
       });
     });
     updateBulkBar();
@@ -319,10 +402,20 @@ function openProductModal(existing, onDone) {
       <div class="field-label">Amazon 链接 <span class="hint">可选 · 展示为可跳转链接</span></div>
       <input class="input" data-f="amazonUrl" placeholder="https://www.amazon.com/dp/B0XXXXXX 或 amazon.com/dp/B0XXXXXX">
     </div>
+
+    <div class="form-section-title">存入分类 <span style="font-weight:400;font-size:12.5px;color:var(--text-faint)">选择产品归属的列表（可在列表中复制 / 移动）</span></div>
+    <div class="cat-radio" data-cat-radio>
+      ${CATEGORIES.map((c, i) => `
+        <label class="cat-radio-item ${i === 0 ? 'active' : ''}">
+          <input type="radio" name="libcat" value="${c.id}" ${i === 0 ? 'checked' : ''}>
+          <span>${esc(c.label)}</span>
+        </label>`).join('')}
+    </div>
+
     <div class="form-grid">
       <div class="field">
-        <div class="field-label">产品类目</div>
-        <input class="input" data-f="category" placeholder="例如：Home & Kitchen">
+        <div class="field-label">产品类目 <span class="hint">自由文本，如 Home &amp; Kitchen</span></div>
+        <input class="input" data-f="productCategory" placeholder="例如：Home & Kitchen">
       </div>
     </div>
 
@@ -377,6 +470,14 @@ function openProductModal(existing, onDone) {
   `;
   body.querySelector('[data-uploader]').appendChild(uploader.el);
 
+  // 分类单选高亮
+  const catRadio = body.querySelector('[data-cat-radio]');
+  catRadio.querySelectorAll('input').forEach((r) => {
+    r.addEventListener('change', () => {
+      catRadio.querySelectorAll('.cat-radio-item').forEach((l) => l.classList.toggle('active', l.querySelector('input').checked));
+    });
+  });
+
   // ---------- 1688 货源（最多 3 条） ----------
   const suppliesBox = body.querySelector('[data-supplies]');
   const addSupplyBtn = body.querySelector('[data-add-supply]');
@@ -414,7 +515,6 @@ function openProductModal(existing, onDone) {
   addSupplyBtn.addEventListener('click', () => {
     if (supplyCount < 3) { supplyCount++; renderSupplies(); }
   });
-  // 回填或默认 1 条
   if (existing && (existing.supplies || []).length) {
     supplyCount = Math.min(existing.supplies.length, 3);
     renderSupplies();
@@ -432,15 +532,12 @@ function openProductModal(existing, onDone) {
   // ---------- 多站点报价测算 ----------
   const cardsBox = body.querySelector('[data-site-cards]');
   const summaryBox = body.querySelector('[data-quote-summary]');
-  // 选中站点（保持顺序，第一个为主站点）
   const selectedSites = new Set();
-  // 站点卡字段缓存（站点卡重渲染时保留输入）：{ US: { exchangeRate:.., ... } }
   const siteFieldCache = {};
 
   function siteInfoOf(code) {
     return AMAZON_SITES.find((s) => s.code === code) || AMAZON_SITES[0];
   }
-  /** 站点默认参数（汇率随站点 / VAT 5 / 佣金 15 / 仓储退货按站点；设置页可自定义各站点默认值） */
   function siteDefaults(code) {
     const si = siteInfoOf(code);
     const rates = PER_SITE_RATES[code] || PER_SITE_RATES.US;
@@ -457,7 +554,6 @@ function openProductModal(existing, onDone) {
       fbaFee: '', shippingPerUnit: 0,
     };
   }
-  /** 读取共享基础字段（kg 输入，内部转 g 存） */
   function readBase() {
     const q = {};
     body.querySelectorAll('[data-q]').forEach((el) => {
@@ -465,7 +561,6 @@ function openProductModal(existing, onDone) {
     });
     return q;
   }
-  /** 读取某站点卡字段（DOM 优先，其次缓存/默认） */
   function readSiteFields(code) {
     const out = { ...siteDefaults(code), ...(siteFieldCache[code] || {}) };
     const card = cardsBox.querySelector(`[data-site-card="${code}"]`);
@@ -476,7 +571,6 @@ function openProductModal(existing, onDone) {
     }
     return out;
   }
-  /** 将站点卡当前输入同步到缓存 */
   function syncSiteCache() {
     cardsBox.querySelectorAll('[data-site-card]').forEach((card) => {
       const code = card.dataset.siteCard;
@@ -486,13 +580,11 @@ function openProductModal(existing, onDone) {
       });
     });
   }
-  /** 渲染站点 chips 选中态 */
   function renderSiteChips() {
     body.querySelectorAll('[data-site-toggle]').forEach((btn) => {
       btn.classList.toggle('active', selectedSites.has(btn.dataset.siteToggle));
     });
   }
-  /** 渲染各站点测算卡（站点集合变化时调用） */
   function renderSiteCards() {
     cardsBox.innerHTML = '';
     selectedSites.forEach((code) => {
@@ -521,7 +613,6 @@ function openProductModal(existing, onDone) {
         <div class="sq-result" data-sq-result></div>`;
       cardsBox.appendChild(card);
     });
-    // 事件绑定（手动标记监听须先注册，避免自动计算覆盖用户输入）
     cardsBox.querySelectorAll('[data-remove-site]').forEach((btn) => {
       btn.addEventListener('click', () => {
         if (selectedSites.size <= 1) { toastInfo('至少保留一个目标站点'); return; }
@@ -542,7 +633,6 @@ function openProductModal(existing, onDone) {
       el.addEventListener('change', recomputeAll);
     });
   }
-  /** 全站点重新计算：头程=计费重(体积重/实重取大)×海运单价÷汇率；仓储为固定百分比（与退货/佣金/广告一致） */
   function recomputeAll() {
     syncSiteCache();
     const base = readBase();
@@ -558,7 +648,6 @@ function openProductModal(existing, onDone) {
       if (!card) return;
       const f = readSiteFields(code);
       const resEl = card.querySelector('[data-sq-result]');
-      // 头程自动：计费重量 × 海运单价 ÷ 汇率（未手动改时）
       const shipInput = card.querySelector('[data-sq="shippingPerUnit"]');
       const seaRate = Number(base.seaFreightRate) || 0;
       const exch = Number(f.exchangeRate) || 0;
@@ -584,7 +673,6 @@ function openProductModal(existing, onDone) {
       }
       summary.push({ si, result });
     });
-    // 顶部汇总
     summaryBox.innerHTML = summary.length ? `
       <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px">
         ${summary.map(({ si, result }) => `
@@ -592,7 +680,6 @@ function openProductModal(existing, onDone) {
       </div>` : '';
   }
 
-  // 站点 chips 多选
   body.querySelectorAll('[data-site-toggle]').forEach((btn) => {
     btn.addEventListener('click', () => {
       const code = btn.dataset.siteToggle;
@@ -607,13 +694,11 @@ function openProductModal(existing, onDone) {
       recomputeAll();
     });
   });
-  // 共享基础字段变化 → 全站点重算
   body.querySelectorAll('[data-q]').forEach((el) => {
     el.addEventListener('input', recomputeAll);
     el.addEventListener('change', recomputeAll);
   });
 
-  // 体积重除数 / 海运单价默认值（设置页可自定义；产品已有值则保留）
   if (!existing || !existing.quote || existing.quote.volWeightDivisor == null || existing.quote.volWeightDivisor === '') {
     const vd = (getSettings().quoteDefaults || {}).volWeightDivisor;
     if (vd) body.querySelector('[data-q="volWeightDivisor"]').value = vd;
@@ -623,7 +708,6 @@ function openProductModal(existing, onDone) {
     if (sr) body.querySelector('[data-q="seaFreightRate"]').value = sr;
   }
 
-  // ---------- 多站点回填 ----------
   const initSites = (existing && Array.isArray(existing.sites) && existing.sites.length)
     ? existing.sites
     : (existing && existing.quote && existing.quote.site ? [existing.quote.site] : (existing ? [existing.site || 'US'] : ['US']));
@@ -649,8 +733,12 @@ function openProductModal(existing, onDone) {
     uploader.setValue(existing.image);
     body.querySelector('[data-f="name"]').value = existing.name || '';
     body.querySelector('[data-f="amazonUrl"]').value = existing.amazonUrl || '';
-    body.querySelector('[data-f="category"]').value = existing.category || '';
+    body.querySelector('[data-f="productCategory"]').value = existing.productCategory || '';
     body.querySelector('[data-f="description"]').value = existing.description || '';
+    // 分类单选
+    const ec = CATEGORY_IDS.includes(existing.category) ? existing.category : CATEGORIES[0].id;
+    const ecInput = catRadio.querySelector(`input[value="${ec}"]`);
+    if (ecInput) { ecInput.checked = true; catRadio.querySelectorAll('.cat-radio-item').forEach((l) => l.classList.toggle('active', l.querySelector('input').checked)); }
   }
   renderSiteChips();
   renderSiteCards();
@@ -677,21 +765,18 @@ function openProductModal(existing, onDone) {
   okBtn.onclick = () => {
     const name = body.querySelector('[data-f="name"]').value.trim();
     if (!name) { toastError('请填写产品名称'); return; }
-    // 收集货源
     const supplies = [];
     body.querySelectorAll('[data-supply-row]').forEach((row) => {
       const link = row.querySelector('[data-sl-link]').value.trim();
       const specColor = row.querySelector('[data-sl-spec]').value.trim();
       if (link || specColor) supplies.push({ link, specColor });
     });
-    // 收集报价（多站点：每个选中站点一份 quote）
     syncSiteCache();
     const base = readBase();
     const sites = [...selectedSites];
     const quotes = {};
     sites.forEach((code) => {
       const si = siteInfoOf(code);
-      // DOM 最终值（含自动计算后的头程/仓储），缺失回退缓存/默认
       const f = { ...siteDefaults(code), ...(siteFieldCache[code] || {}) };
       const card = body.querySelector(`[data-site-card="${code}"]`);
       if (card) {
@@ -709,7 +794,6 @@ function openProductModal(existing, onDone) {
       quotes[code] = {
         site: code,
         lengthCm: base.lengthCm, widthCm: base.widthCm, heightCm: base.heightCm,
-        // 内部统一存 g（与 Excel 模板「重量(g)」列、历史数据一致），UI 输入输出为 kg
         weightG: base.weightG === '' ? '' : Math.round(Number(base.weightG) * 1000),
         cost: base.cost, exchangeRate: f.exchangeRate,
         targetProfitRate: f.targetProfitRate, adRate: f.adRate, referralRate: f.referralRate,
@@ -721,11 +805,14 @@ function openProductModal(existing, onDone) {
       };
     });
     const mainSite = sites[0] || 'US';
+    const catEl = body.querySelector('[data-cat-radio] input:checked');
+    const cat = catEl ? catEl.value : CATEGORIES[0].id;
     const data = {
       image: uploader.getValue(),
       name,
       amazonUrl: body.querySelector('[data-f="amazonUrl"]').value.trim(),
-      category: body.querySelector('[data-f="category"]').value.trim(),
+      category: cat,
+      productCategory: body.querySelector('[data-f="productCategory"]').value.trim(),
       site: mainSite,
       sites,
       supplies,

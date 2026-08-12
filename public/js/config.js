@@ -4,6 +4,18 @@
 export const APP_NAME = '拾光柠工作台';
 export const APP_VERSION = 'v1.0';
 
+/** 选品库三大分类（产品归属列表） */
+export const CATEGORIES = [
+  { id: 'niuma', label: '牛马人' },
+  { id: 'zhaowu', label: '昭梧' },
+  { id: 'fengyang', label: '沣洋' },
+];
+export const CATEGORY_IDS = CATEGORIES.map((c) => c.id);
+export function categoryLabel(id) {
+  const c = CATEGORIES.find((x) => x.id === id);
+  return c ? c.label : id;
+}
+
 /** Amazon 目标站点（含本地货币与人民币参考汇率） */
 export const AMAZON_SITES = [
   { code: 'US', label: '美国站', flag: '🇺🇸', domain: 'amazon.com', currency: 'USD', symbol: '$', rate: 7.2 },

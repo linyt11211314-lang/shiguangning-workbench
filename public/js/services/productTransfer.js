@@ -5,7 +5,7 @@
  */
 import { listProducts, addProductTracked } from '../store/productStore.js';
 import { toastInfo } from '../ui/toast.js';
-import { AMAZON_SITES } from '../config.js';
+import { AMAZON_SITES, CATEGORY_IDS } from '../config.js';
 import { calculateQuote } from './pricing.js';
 
 const r2 = (n) => (n === '' || n == null || isNaN(n)) ? '' : Math.round(Number(n) * 100) / 100;
@@ -14,7 +14,8 @@ const r2 = (n) => (n === '' || n == null || isNaN(n)) ? '' : Math.round(Number(n
 const HEADER_MAP = [
   ['产品名称', 'name'],
   ['Amazon链接', 'amazonUrl'],
-  ['产品类目', 'category'],
+  ['产品类目', 'productCategory'],
+  ['分类', 'category'],
   ['目标站点', 'site'],
   ['货源1链接', 's1_link'],
   ['货源1规格颜色', 's1_spec'],
@@ -41,7 +42,7 @@ const HEADER_MAP = [
 const HEADERS = HEADER_MAP.map(([h]) => h);
 
 /** 每列宽度（对齐美观） */
-const COL_WIDTHS = [26, 34, 18, 10, 30, 20, 30, 20, 30, 20, 10, 10, 10, 10, 12, 8, 12, 12, 12, 10, 10, 11, 11, 10, 34];
+const COL_WIDTHS = [26, 34, 18, 10, 10, 30, 20, 30, 20, 30, 20, 10, 10, 10, 10, 12, 8, 12, 12, 12, 10, 10, 11, 11, 10, 34];
 
 function getXLSX() {
   const X = window.XLSX;
@@ -57,7 +58,8 @@ function productToRow(p) {
   return {
     产品名称: p.name || '',
     Amazon链接: p.amazonUrl || '',
-    产品类目: p.category || '',
+    产品类目: p.productCategory || '',
+    分类: p.category || '',
     目标站点: p.site || 'US',
     货源1链接: s(0).link || '',
     货源1规格颜色: s(0).specColor || '',
@@ -121,8 +123,11 @@ const siteFromExcel = (v) => {
   return hit ? hit.code : 'US';
 };
 
-/** 导入 Excel 行 → 产品数据（重新测算报价保证一致） */
-function rowToProduct(row) {
+/** 导入 Excel 行 → 产品数据（重新测算报价保证一致）
+ * @param {Object} row 行数据
+ * @param {string} defaultCategory 分类列缺失/不匹配时的默认分类（当前激活 Tab）
+ */
+function rowToProduct(row, defaultCategory = 'niuma') {
   const g = (h) => (row[h] == null ? '' : row[h]);
   const supplies = [];
   for (let i = 1; i <= 3; i++) {
@@ -168,10 +173,15 @@ function rowToProduct(row) {
     };
   }
 
+  // 分类列：合法则用之，否则归入默认分类（当前激活 Tab）
+  const catRaw = String(g('分类')).trim().toLowerCase();
+  const category = CATEGORY_IDS.includes(catRaw) ? catRaw : (defaultCategory || 'niuma');
+
   return {
     name,
     amazonUrl: String(g('Amazon链接')).trim(),
-    category: String(g('产品类目')).trim(),
+    category,
+    productCategory: String(g('产品类目')).trim(),
     site,
     supplies,
     quote,
@@ -179,8 +189,11 @@ function rowToProduct(row) {
   };
 }
 
-/** 从 Excel 文件导入产品（返回 { count, skipped }） */
-export async function importProductsExcel(file) {
+/** 从 Excel 文件导入产品（返回 { count, skipped }）
+ * @param {File} file
+ * @param {string} defaultCategory 分类列缺失/不匹配时的默认分类
+ */
+export async function importProductsExcel(file, defaultCategory = 'niuma') {
   const X = getXLSX();
   const buf = await file.arrayBuffer();
   const wb = X.read(buf, { type: 'array' });
@@ -191,7 +204,7 @@ export async function importProductsExcel(file) {
   let count = 0;
   let skipped = 0;
   for (const row of rows) {
-    const data = rowToProduct(row);
+    const data = rowToProduct(row, defaultCategory);
     if (!data) { skipped++; continue; }
     addProductTracked(data);
     count++;

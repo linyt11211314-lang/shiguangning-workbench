@@ -7,7 +7,7 @@
  *                         targetProfitRate, adRate, referralRate, fbaFee, shippingPerUnit, result }）,
  *          description, keywords, createdAt, updatedAt
  */
-import { STORAGE_KEYS } from '../config.js';
+import { STORAGE_KEYS, CATEGORY_IDS } from '../config.js';
 import { uid } from '../utils.js';
 
 let products = null;
@@ -50,6 +50,11 @@ export function normalizeProduct(p) {
     out.quote = out.quotes[out.sites[0]] || Object.values(out.quotes)[0] || null;
   }
   out.site = out.sites[0] || out.site || 'US';
+  // 选品库三大分类迁移：旧 category 字段曾是「产品类目」自由文本，现改作分类标识（niuma/zhaowu/fengyang）
+  if (!CATEGORY_IDS.includes(out.category)) {
+    if (!out.productCategory) out.productCategory = out.category || '';
+    out.category = CATEGORY_IDS.includes(out.category) ? out.category : 'niuma';
+  }
   return out;
 }
 
@@ -72,7 +77,8 @@ export function addProduct(data) {
     image: data.image || '',
     name: data.name || '',
     amazonUrl: data.amazonUrl || '',
-    category: data.category || '',
+    category: CATEGORY_IDS.includes(data.category) ? data.category : 'niuma',
+    productCategory: data.productCategory || '',
     site: mainSite,
     sites,
     supplies: Array.isArray(data.supplies) ? data.supplies : (data.supply1688 ? [{ link: data.supply1688, specColor: '' }] : []),

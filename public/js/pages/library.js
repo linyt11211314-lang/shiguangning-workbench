@@ -740,7 +740,7 @@ function openProductModal(existing, onDone) {
           <label class="sq-item"><span>仓储 %</span><input class="input input-sm" type="number" min="0" max="10" step="0.1" data-sq="storageRate" value="${f.storageRate}"></label>
           <label class="sq-item"><span>退货率 %</span><input class="input input-sm" type="number" min="0" max="50" step="0.5" data-sq="returnRate" value="${f.returnRate}"></label>
           <label class="sq-item"><span>FBA 费</span><input class="input input-sm" type="number" min="0" step="0.01" data-sq="fbaFee" value="${f.fbaFee}" placeholder="如 4.46"><span class="sq-curr">${si.symbol}</span></label>
-          <label class="sq-item"><span>头程费</span><input class="input input-sm" type="number" min="0" step="0.01" data-sq="shippingPerUnit" value="${f.shippingPerUnit}"><span class="sq-curr">${si.symbol}·计费重×单价÷汇率</span></label>
+          <label class="sq-item"><span>头程费</span><input class="input input-sm" type="number" min="0" step="0.01" data-sq="shippingPerUnit" value="${f.shippingPerUnit}" placeholder="同步长宽高重量和采购价"><span class="sq-curr">${si.symbol}·计费重×单价÷汇率</span></label>
         </div>
         <div class="sq-result" data-sq-result></div>`;
       cardsBox.appendChild(card);

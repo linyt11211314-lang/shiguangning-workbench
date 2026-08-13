@@ -1,13 +1,13 @@
 /**
- * 广告诊断页 · 第一阶段：数据导入与解析
- * - 导入领星 ERP 导出的 Excel/CSV
- * - 自动识别关键字段，支持手动映射修正
- * - 解析后预览，确认后按 站点+日期 去重存入 localStorage
+ * 广告诊断页
+ * 第一阶段：数据导入与解析（领星 Excel/CSV → 字段映射 → 预览 → 去重存储）
+ * 第二阶段：数据看板与趋势展示（概览 / 趋势折线图 / AE·SA 双站点对比 / 明细表联动）
  */
 import { icon } from '../ui/icons.js';
 import { esc } from '../utils.js';
 import { toastSuccess, toastError, toastInfo } from '../ui/toast.js';
 import { confirmDialog, openModal } from '../ui/modal.js';
+import { renderLineChart } from '../ui/lineChart.js';
 import {
   listRecords,
   listImports,
@@ -27,6 +27,11 @@ const MAX_FILE_MB = 10;
 const ACCEPT = '.xlsx,.xls,.csv';
 const PREVIEW_LIMIT = 50;
 
+// —— 看板时间范围（模块级，跨重渲染保持）——
+let viewRange = '7d'; // '7d' | '30d' | 'custom'
+let viewStart = null; // 'YYYY-MM-DD'
+let viewEnd = null;
+
 function fmtNum(v, dec = 2) {
   const n = Number(v) || 0;
   return n.toLocaleString('zh-CN', { minimumFractionDigits: dec, maximumFractionDigits: dec });
@@ -37,45 +42,119 @@ function fmtInt(v) {
 function siteLabel(s) {
   return s === 'AE' ? '中东站 AE' : s === 'SA' ? '沙特站 SA' : s;
 }
+function todayStr() {
+  const d = new Date();
+  d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+  return d.toISOString().slice(0, 10);
+}
+function addDays(dateStr, n) {
+  const d = new Date(dateStr + 'T00:00:00');
+  d.setDate(d.getDate() + n);
+  d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+  return d.toISOString().slice(0, 10);
+}
+function eachDateRange(start, end) {
+  const out = [];
+  let cur = start;
+  let guard = 0;
+  while (cur <= end && guard++ < 4000) {
+    out.push(cur);
+    cur = addDays(cur, 1);
+  }
+  return out;
+}
+/** ACOS 健康度配色 */
+function acosHealth(acos, hasSales) {
+  if (!hasSales || acos == null) return { cls: 'gray', label: '无数据', dot: '⚪' };
+  if (acos <= 25) return { cls: 'green', label: '健康', dot: '🟢' };
+  if (acos <= 35) return { cls: 'yellow', label: '预警', dot: '🟡' };
+  return { cls: 'red', label: '偏高', dot: '🔴' };
+}
+/** 当前看板的时间范围 */
+function getRange(all) {
+  if (viewRange === 'custom' && viewStart && viewEnd) return { start: viewStart, end: viewEnd };
+  const dates = all.map((r) => r.date).sort();
+  const maxD = dates[dates.length - 1] || todayStr();
+  const n = viewRange === '30d' ? 30 : 7;
+  return { start: addDays(maxD, -(n - 1)), end: maxD };
+}
+function filterByRange(all, start, end) {
+  return all.filter((r) => r.date >= start && r.date <= end);
+}
+/** 按日期聚合（跨站点求和），生成趋势序列 */
+function dailySeries(ranged, start, end) {
+  const dates = eachDateRange(start, end);
+  const byDate = new Map();
+  for (const r of ranged) {
+    const a = byDate.get(r.date) || { cost: 0, sales: 0 };
+    a.cost += r.cost;
+    a.sales += r.sales;
+    byDate.set(r.date, a);
+  }
+  const cost = [];
+  const sales = [];
+  const acos = [];
+  for (const d of dates) {
+    const a = byDate.get(d) || { cost: 0, sales: 0 };
+    cost.push(a.cost);
+    sales.push(a.sales);
+    acos.push(a.sales > 0 ? (a.cost / a.sales) * 100 : null);
+  }
+  return { dates: dates.map((d) => d.slice(5)), fullDates: dates, cost, sales, acos };
+}
+/** 聚合一组记录的指标 */
+function summarize(recs) {
+  const t = { cost: 0, sales: 0, impressions: 0, clicks: 0, orders: 0 };
+  for (const r of recs) {
+    t.cost += r.cost;
+    t.sales += r.sales;
+    t.impressions += r.impressions;
+    t.clicks += r.clicks;
+    t.orders += r.orders;
+  }
+  const acos = t.sales > 0 ? (t.cost / t.sales) * 100 : null;
+  const roas = t.cost > 0 ? t.sales / t.cost : 0;
+  return { ...t, acos, roas };
+}
 
 export function render(container, { rerender } = {}) {
-  const records = listRecords();
+  const all = listRecords();
   const imports = listImports();
 
-  container.innerHTML = `
+  // 顶部卡片（标题 + 导入/导出/清空）始终渲染
+  const header = `
     <div class="card" style="margin-bottom:18px">
       <div class="card-pad">
         <div class="section-head" style="margin-bottom:12px">
           <div class="section-title">广告诊断</div>
           <div class="section-actions">
             <button class="btn btn-primary btn-sm" data-import>${icon('upload')} 导入领星数据</button>
-            ${records.length ? `<button class="btn btn-soft btn-sm" data-export>${icon('download')} 导出</button>` : ''}
-            ${records.length ? `<button class="btn btn-ghost btn-sm" data-clear>${icon('trash')} 清空</button>` : ''}
+            ${all.length ? `<button class="btn btn-soft btn-sm" data-export>${icon('download')} 导出</button>` : ''}
+            ${all.length ? `<button class="btn btn-ghost btn-sm" data-clear>${icon('trash')} 清空</button>` : ''}
           </div>
         </div>
         <div class="field-tip">数据来源：领星 ERP 手动导出的广告报表（Excel / CSV）。导入后按「站点 + 日期」自动去重。</div>
       </div>
-    </div>
-    ${records.length ? renderSummary(records, imports) : renderEmpty()}
-  `;
+    </div>`;
 
-  container.querySelector('[data-import]')?.addEventListener('click', () => openImportModal(rerender));
-  container.querySelector('[data-export]')?.addEventListener('click', () => exportData(records));
-  container.querySelector('[data-clear]')?.addEventListener('click', () => {
-    confirmDialog({
-      title: '清空广告数据',
-      message: '将删除全部已导入的广告明细与导入记录，且不可恢复。确定继续？',
-      danger: true,
-      confirmText: '清空',
-      onConfirm: () => {
-        clearAll();
-        toastSuccess('已清空全部广告数据');
-        rerender();
-      },
-    });
-  });
+  if (!all.length) {
+    container.innerHTML = header + renderEmpty();
+    wireHeader(container, rerender);
+    return;
+  }
 
-  // 删除单个导入批次
+  const { start, end } = getRange(all);
+  const ranged = filterByRange(all, start, end);
+  const sites = [...new Set(all.map((r) => r.site))].sort();
+  const daily = dailySeries(ranged, start, end);
+
+  container.innerHTML = header + renderDashboard(ranged, imports, start, end, daily, sites);
+
+  wireHeader(container, rerender);
+  wireFilter(container, rerender);
+  wireDashboard(container, ranged, daily);
+
+  // 删除导入批次
   container.querySelectorAll('[data-del-import]').forEach((btn) => {
     btn.addEventListener('click', () => {
       const id = btn.dataset.delImport;
@@ -108,15 +187,29 @@ function renderEmpty() {
     </div>`;
 }
 
-function renderSummary(records, imports) {
-  const sites = [...new Set(records.map((r) => r.site))].sort();
-  const dates = records.map((r) => r.date).sort();
-  const dateRange = dates.length ? `${dates[0]} ~ ${dates[dates.length - 1]}` : '-';
-  const totalCost = records.reduce((s, r) => s + r.cost, 0);
-  const totalSales = records.reduce((s, r) => s + r.sales, 0);
-  const totalClicks = records.reduce((s, r) => s + r.clicks, 0);
-  const totalOrders = records.reduce((s, r) => s + r.orders, 0);
-  const acos = totalSales > 0 ? (totalCost / totalSales) * 100 : 0;
+function wireHeader(container, rerender) {
+  container.querySelector('[data-import]')?.addEventListener('click', () => openImportModal(rerender));
+  container.querySelector('[data-export]')?.addEventListener('click', () => exportData(listRecords()));
+  container.querySelector('[data-clear]')?.addEventListener('click', () => {
+    confirmDialog({
+      title: '清空广告数据',
+      message: '将删除全部已导入的广告明细与导入记录，且不可恢复。确定继续？',
+      danger: true,
+      confirmText: '清空',
+      onConfirm: () => {
+        clearAll();
+        toastSuccess('已清空全部广告数据');
+        rerender();
+      },
+    });
+  });
+}
+
+function renderDashboard(ranged, imports, start, end, daily, sites) {
+  const ov = summarize(ranged);
+  const ovHealth = acosHealth(ov.acos, ov.sales > 0);
+  const totalClicks = ov.clicks;
+  const totalOrders = ov.orders;
 
   const importRows = imports
     .map(
@@ -131,12 +224,66 @@ function renderSummary(records, imports) {
     )
     .join('');
 
-  const tableRows = records
+  const showChart = ranged.length > 0;
+  const chartCard = `
+    <div class="card" style="margin-bottom:18px">
+      <div class="card-pad">
+        <div class="section-head" style="margin-bottom:10px">
+          <div class="section-title">📈 广告趋势</div>
+          ${renderRangeFilter()}
+        </div>
+        <div id="adsChart" class="ads-chart" style="position:relative"></div>
+      </div>
+    </div>`;
+
+  // 双站点对比
+  const siteCards = ['AE', 'SA']
+    .map((s) => {
+      const recs = ranged.filter((r) => r.site === s);
+      const has = recs.length > 0;
+      const sm = summarize(recs);
+      const h = acosHealth(sm.acos, sm.sales > 0);
+      return `
+      <div class="site-card">
+        <div class="site-card-head">
+          <span class="site-flag">${s === 'AE' ? '🇦🇪' : '🇸🇦'}</span>
+          <span class="site-name">${s === 'AE' ? '中东站 AE' : '沙特站 SA'}</span>
+        </div>
+        ${
+          has
+            ? `<div class="site-metrics">
+            <div class="sm-row"><span>花费</span><b>¥${fmtNum(sm.cost)}</b></div>
+            <div class="sm-row"><span>销售额</span><b>¥${fmtNum(sm.sales)}</b></div>
+            <div class="sm-row"><span>ACOS</span><b class="acos-${h.cls}">${sm.acos == null ? 'N/A' : sm.acos.toFixed(1) + '%'} ${h.dot} ${h.label}</b></div>
+            <div class="sm-row"><span>ROAS</span><b>${fmtNum(sm.roas)}</b></div>
+            <div class="sm-row"><span>曝光</span><b>${fmtInt(sm.impressions)}</b></div>
+            <div class="sm-row"><span>点击</span><b>${fmtInt(sm.clicks)}</b></div>
+            <div class="sm-row"><span>订单</span><b>${fmtInt(sm.orders)}</b></div>
+          </div>
+          <div class="site-tip ${h.cls === 'red' ? 'tip-red' : h.cls === 'yellow' ? 'tip-yellow' : h.cls === 'gray' ? 'tip-gray' : 'tip-green'}">
+            ${
+              sm.sales <= 0
+                ? '💡 无广告收入数据'
+                : h.cls === 'red'
+                ? '💡 ACOS 偏高，建议优化关键词匹配与出价'
+                : h.cls === 'yellow'
+                ? '💡 ACOS 处于预警区间，关注转化与花费'
+                : '💡 ACOS 健康，可适当扩量'
+            }
+          </div>`
+            : `<div class="ads-empty" style="padding:18px 0">该站点在此时间范围内暂无数据</div>`
+        }
+      </div>`;
+    })
+    .join('');
+
+  // 明细表
+  const tableRows = ranged
     .slice()
     .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : a.site.localeCompare(b.site)))
     .map(
       (r) => `
-      <tr>
+      <tr data-date="${esc(r.date)}">
         <td>${esc(r.date)}</td>
         <td>${esc(siteLabel(r.site))}</td>
         <td class="num">${fmtNum(r.cost)}</td>
@@ -153,14 +300,14 @@ function renderSummary(records, imports) {
       <div class="card-pad">
         <div class="section-head" style="margin-bottom:14px">
           <div class="section-title">数据概览</div>
-          <span class="section-sub">共 ${fmtInt(records.length)} 条明细</span>
+          <span class="section-sub">${ranged.length ? `近 ${ranged.length} 条明细` : '该范围无数据'}</span>
         </div>
         <div class="ads-stats">
-          <div class="ads-stat"><div class="ads-stat-v">${fmtNum(totalCost)}</div><div class="ads-stat-l">总花费</div></div>
-          <div class="ads-stat"><div class="ads-stat-v">${fmtNum(totalSales)}</div><div class="ads-stat-l">总广告销售额</div></div>
-          <div class="ads-stat"><div class="ads-stat-v">${acos.toFixed(1)}%</div><div class="ads-stat-l">整体 ACOS</div></div>
+          <div class="ads-stat"><div class="ads-stat-v">¥${fmtNum(ov.cost)}</div><div class="ads-stat-l">总花费</div></div>
+          <div class="ads-stat"><div class="ads-stat-v">¥${fmtNum(ov.sales)}</div><div class="ads-stat-l">总广告销售额</div></div>
+          <div class="ads-stat"><div class="ads-stat-v acos-${ovHealth.cls}">${ov.acos == null ? 'N/A' : ov.acos.toFixed(1) + '%'} ${ovHealth.dot}</div><div class="ads-stat-l">整体 ACOS（${ovHealth.label}）</div></div>
         </div>
-        <div class="ads-meta-line">覆盖站点：${sites.map(siteLabel).join('、') || '-'} ｜ 日期范围：${dateRange} ｜ 总点击 ${fmtInt(totalClicks)} ｜ 总订单 ${fmtInt(totalOrders)}</div>
+        <div class="ads-meta-line">覆盖站点：${sites.map(siteLabel).join('、') || '-'} ｜ 日期范围：${start} ~ ${end} ｜ 总点击 ${fmtInt(totalClicks)} ｜ 总订单 ${fmtInt(totalOrders)}</div>
       </div>
     </div>
 
@@ -173,22 +320,113 @@ function renderSummary(records, imports) {
       </div>
     </div>
 
+    ${chartCard}
+
+    <div class="card" style="margin-bottom:18px">
+      <div class="card-pad">
+        <div class="section-head" style="margin-bottom:12px">
+          <div class="section-title">双站点对比</div>
+        </div>
+        <div class="site-grid">${siteCards}</div>
+      </div>
+    </div>
+
     <div class="card">
       <div class="card-pad">
         <div class="section-head" style="margin-bottom:10px">
           <div class="section-title">明细数据</div>
-          <span class="section-sub">${records.length > 500 ? '仅显示前 500 条' : `共 ${records.length} 条`}</span>
+          <span class="section-sub">${ranged.length ? `共 ${ranged.length} 条` : '无数据'}</span>
         </div>
-        <div class="table-scroll" style="max-height:520px">
+        <div class="table-scroll ads-detail" style="max-height:520px">
           <table class="data-table">
             <thead>
               <tr><th>日期</th><th>站点</th><th class="num">花费</th><th class="num">销售额</th><th class="num">曝光</th><th class="num">点击</th><th class="num">订单</th></tr>
             </thead>
-            <tbody>${tableRows}</tbody>
+            <tbody>${tableRows || '<tr><td colspan="7" style="text-align:center;color:var(--text-sub)">该时间范围内暂无数据</td></tr>'}</tbody>
           </table>
         </div>
       </div>
     </div>`;
+}
+
+function renderRangeFilter() {
+  const btn = (val, label) =>
+    `<button class="ads-range-btn ${viewRange === val ? 'active' : ''}" data-range="${val}">${label}</button>`;
+  const custom = viewRange === 'custom' && viewStart && viewEnd
+    ? `<span class="ads-range-custom">
+        <input type="date" class="input ads-range-date" data-cstart value="${viewStart}">
+        <span class="ads-range-tilde">~</span>
+        <input type="date" class="input ads-range-date" data-cend value="${viewEnd}">
+      </span>`
+    : '';
+  return `<div class="ads-range">${btn('7d', '近7天')}${btn('30d', '近30天')}${btn('custom', '自定义')}${custom}</div>`;
+}
+
+function wireFilter(container, rerender) {
+  container.querySelectorAll('[data-range]').forEach((b) => {
+    b.addEventListener('click', () => {
+      const v = b.dataset.range;
+      if (v === 'custom') {
+        if (!(viewRange === 'custom' && viewStart && viewEnd)) {
+          const today = todayStr();
+          viewRange = 'custom';
+          viewStart = addDays(today, -6);
+          viewEnd = today;
+        }
+      } else {
+        viewRange = v;
+      }
+      rerender();
+    });
+  });
+  const cs = container.querySelector('[data-cstart]');
+  const ce = container.querySelector('[data-cend]');
+  if (cs && ce) {
+    const apply = () => {
+      const s = cs.value;
+      const e = ce.value;
+      if (!s || !e) {
+        toastError('请选择完整的开始与结束日期');
+        return;
+      }
+      if (s > e) {
+        toastError('开始日期不能晚于结束日期');
+        return;
+      }
+      viewStart = s;
+      viewEnd = e;
+      rerender();
+    };
+    cs.addEventListener('change', apply);
+    ce.addEventListener('change', apply);
+  }
+}
+
+function wireDashboard(container, ranged, daily) {
+  const chartEl = container.querySelector('#adsChart');
+  if (!chartEl) return;
+  if (ranged.length) {
+    renderLineChart(chartEl, {
+      dates: daily.dates,
+      fullDates: daily.fullDates,
+      series: { cost: daily.cost, sales: daily.sales, acos: daily.acos },
+      onPointClick: (fullDate) => {
+        const tbl = container.querySelector('.ads-detail tbody');
+        if (!tbl) return;
+        tbl.querySelectorAll('tr.row-highlight').forEach((r) => r.classList.remove('row-highlight'));
+        const rows = tbl.querySelectorAll(`tr[data-date="${fullDate}"]`);
+        if (rows.length) {
+          rows.forEach((r) => r.classList.add('row-highlight'));
+          if (rows[0].scrollIntoView) rows[0].scrollIntoView({ block: 'center', behavior: 'smooth' });
+          toastInfo(`已定位 ${fullDate} 的 ${rows.length} 条明细`);
+        } else {
+          toastInfo(`已定位 ${fullDate}（该日无明细）`);
+        }
+      },
+    });
+  } else {
+    chartEl.innerHTML = '<div class="ads-empty">该时间范围内暂无数据可绘制趋势</div>';
+  }
 }
 
 function openImportModal(rerender) {
@@ -290,13 +528,18 @@ function openImportModal(rerender) {
     }).join('');
 
     const recs = buildRecords(state.rawRows, state.mapping, state.site, 'preview');
-    const previewRows = recs.slice(0, PREVIEW_LIMIT).map((r) => `
+    const previewRows = recs
+      .slice(0, PREVIEW_LIMIT)
+      .map(
+        (r) => `
       <tr>
         <td>${esc(r.date)}</td><td>${esc(siteLabel(r.site))}</td>
         <td class="num">${fmtNum(r.cost)}</td><td class="num">${fmtNum(r.sales)}</td>
         <td class="num">${fmtInt(r.impressions)}</td><td class="num">${fmtInt(r.clicks)}</td>
         <td class="num">${fmtInt(r.orders)}</td>
-      </tr>`).join('');
+      </tr>`
+      )
+      .join('');
 
     parseArea.innerHTML = `
       <div class="map-grid">${mapHtml}</div>
@@ -328,7 +571,6 @@ function openImportModal(rerender) {
     const site = m.el.querySelector('[data-site]').value;
     const period = m.el.querySelector('[data-period]').value;
     const importId = 'imp_' + Date.now();
-    // 用最终选择的站点/周期重新构建（避免预览时 site=ALL 但 mapping 后变化）
     const finalRecs = buildRecords(state.rawRows, state.mapping, site, importId);
     if (!finalRecs.length) {
       toastError('没有可导入的有效数据');

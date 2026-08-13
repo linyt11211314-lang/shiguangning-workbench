@@ -1076,6 +1076,86 @@ html, body {
 .data-table tbody tr:last-child td { border-bottom: none; }
 .data-table tbody tr:hover { background: var(--card-soft); }
 .data-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+.data-table tbody tr.row-highlight { background: var(--primary-soft); box-shadow: inset 3px 0 0 var(--primary); }
+
+/* ACOS 健康度配色（绿/黄/红/灰） */
+.acos-green { color: #1f9d55; }
+.acos-yellow { color: #c98a00; }
+.acos-red { color: #d64545; }
+.acos-gray { color: var(--text-faint); }
+
+/* 时间筛选器 */
+.ads-range { display: inline-flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.ads-range-btn {
+  border: 1px solid var(--border); background: var(--card-soft); color: var(--text-sub);
+  font-size: 12.5px; font-weight: 600; padding: 6px 13px; border-radius: var(--radius-sm);
+  cursor: pointer; transition: all .14s ease; font-family: var(--font);
+}
+.ads-range-btn:hover { background: var(--hover-bg); color: var(--text); }
+.ads-range-btn.active { background: var(--primary); border-color: var(--primary); color: #1d1d1d; }
+.ads-range-custom { display: inline-flex; gap: 6px; align-items: center; margin-left: 4px; }
+.ads-range-date { width: auto; padding: 5px 9px; font-size: 12.5px; }
+.ads-range-tilde { color: var(--text-sub); }
+
+/* 趋势折线图 */
+.ads-chart { width: 100%; }
+.lc-svg { width: 100%; height: auto; display: block; }
+.lc-grid { stroke: var(--border); stroke-dasharray: 3 3; }
+.lc-axis-line { stroke: var(--border-strong); }
+.lc-axis { fill: var(--text-faint); font-size: 11px; }
+.lc-line { fill: none; stroke-width: 2.2; vector-effect: non-scaling-stroke; }
+.lc-cost-l { stroke: #3b82f6; }
+.lc-sales-l { stroke: #22c55e; }
+.lc-acos-l { stroke: #ef4444; stroke-dasharray: 5 4; }
+.lc-pt { fill: var(--card); stroke-width: 2; cursor: pointer; transition: r .12s ease; }
+.lc-pt.lc-cost { stroke: #3b82f6; }
+.lc-pt.lc-sales { stroke: #22c55e; }
+.lc-pt.lc-acos { stroke: #ef4444; }
+.lc-pt:hover { r: 5; }
+.lc-legend { display: flex; gap: 16px; align-items: center; margin-top: 10px; flex-wrap: wrap; }
+.lc-key { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--text-sub); font-weight: 600; }
+.lc-sw { width: 13px; height: 13px; border-radius: 3px; display: inline-block; }
+.lc-sw.lc-cost { background: #3b82f6; }
+.lc-sw.lc-sales { background: #22c55e; }
+.lc-sw.lc-acos { background: #ef4444; }
+.lc-hint { font-size: 11.5px; color: var(--text-faint); margin-left: auto; }
+.lc-tip {
+  position: absolute; transform: translate(-50%, -100%);
+  background: var(--card); border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-card); padding: 8px 11px; pointer-events: none; z-index: 5; min-width: 150px;
+}
+.lc-tip-d { font-size: 12px; font-weight: 700; color: var(--text); margin-bottom: 5px; }
+.lc-tip-r { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-sub); margin-top: 2px; }
+.lc-tip-r b { color: var(--text); margin-left: auto; }
+
+/* 双站点对比卡 */
+.site-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+.site-card {
+  border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--card-soft);
+  padding: 16px 18px;
+}
+.site-card-head { display: flex; align-items: center; gap: 9px; margin-bottom: 12px; }
+.site-flag { font-size: 20px; }
+.site-name { font-size: 15px; font-weight: 700; color: var(--text); }
+.site-metrics { display: flex; flex-direction: column; gap: 7px; }
+.sm-row { display: flex; align-items: center; justify-content: space-between; font-size: 13px; }
+.sm-row > span { color: var(--text-sub); }
+.sm-row > b { font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; }
+.site-tip {
+  margin-top: 13px; font-size: 12.5px; line-height: 1.5; padding: 9px 11px; border-radius: var(--radius-sm);
+}
+.tip-green { background: #e9f7ef; color: #1f7a45; }
+.tip-yellow { background: #fcf3df; color: #9a6b00; }
+.tip-red { background: #fdeaea; color: #c23b3b; }
+.tip-gray { background: var(--bg-deep); color: var(--text-sub); }
+
+.ads-empty {
+  text-align: center; color: var(--text-faint); font-size: 13px; padding: 26px 10px; line-height: 1.6;
+}
+
+@media (max-width: 720px) {
+  .site-grid { grid-template-columns: 1fr; }
+}
 
 /* 生成中遮罩 */
 .generating-overlay {

@@ -4,7 +4,7 @@
  */
 import { icon } from './ui/icons.js';
 import { esc } from './utils.js';
-import { hasApiKey, getSettings, maskedKey, applyTheme } from './store/settingsStore.js';
+import { hasApiKey, getSettings, maskedKey, applyTheme, syncFollowSystem } from './store/settingsStore.js';
 import { onProjectsChange } from './store/projectStore.js';
 import { onProductsChange, countProducts } from './store/productStore.js';
 import { onScheduleChange } from './store/scheduleStore.js';
@@ -14,6 +14,7 @@ import { render as renderListing } from './pages/listing.js';
 import { render as renderSettings } from './pages/settings.js';
 import { render as renderCommission } from './pages/commission.js';
 import { render as renderSchedule } from './pages/schedule.js';
+import { render as renderAds } from './pages/ads.js';
 
 const NAV = [
   { id: 'home', label: '首页', icon: 'home' },
@@ -21,6 +22,7 @@ const NAV = [
   { id: 'listing', label: 'AI Listing 工坊', icon: 'sparkles' },
   { id: 'commission', label: '我的提成预估', icon: 'chart' },
   { id: 'schedule', label: '日程计划', icon: 'calendar' },
+  { id: 'ads', label: '广告诊断', icon: 'target' },
   { id: 'settings', label: '设置', icon: 'settings' },
 ];
 
@@ -30,14 +32,15 @@ const TITLES = {
   listing: { title: 'AI Listing 工坊', sub: '亚马逊产品开发内容生成中心' },
   commission: { title: '我的提成预估', sub: '按昨天以前的完整数据推算提成' },
   schedule: { title: '日程计划', sub: '待办与计划时间管理' },
-  settings: { title: '设置', sub: 'DeepSeek AI 服务与偏好' },
+  ads: { title: '广告诊断', sub: '领星广告数据导入与诊断' },
+  settings: { title: '设置', sub: '外观、AI 服务与偏好' },
 };
 
 let currentRoute = 'home';
 const ROUTE_KEY = 'sgn.route';
 
 function pageOf(route) {
-  if (route === 'home' || route === 'library' || route === 'settings' || route === 'commission' || route === 'schedule') return route;
+  if (route === 'home' || route === 'library' || route === 'settings' || route === 'commission' || route === 'schedule' || route === 'ads') return route;
   if (route.startsWith('listing')) return 'listing';
   return 'home';
 }
@@ -111,13 +114,15 @@ function renderPage() {
   else if (page === 'listing') renderListing(container, currentRoute, ctx);
   else if (page === 'commission') renderCommission(container, ctx);
   else if (page === 'schedule') renderSchedule(container, ctx);
+  else if (page === 'ads') renderAds(container, ctx);
   else if (page === 'settings') renderSettings(container, ctx);
 }
 
 /** 初始化 */
 function init() {
-  // 应用已保存的主题（明暗模式 + 主题色）
+  // 应用已保存的主题（明暗模式 + 主题色 + 密度/字号/圆角）
   applyTheme();
+  syncFollowSystem();
 
   // 恢复上次停留的页面（刷新不跳回首页）
   try {
@@ -147,4 +152,7 @@ function init() {
   if (logo) logo.addEventListener('click', () => navigate('home'));
 }
 
-init();
+// 入口：确保挂载节点存在后再初始化（模块在 <body> 末尾加载，DOM 已就绪）
+if (typeof document !== 'undefined' && document.getElementById('app')) {
+  init();
+}

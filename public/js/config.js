@@ -100,6 +100,7 @@ export const STORAGE_KEYS = {
   PROJECTS: 'sgn.listingProjects',
   STATS: 'sgn.stats',
   SCHEDULE: 'sgn.schedules',
+  ADS: 'sgn.ads',
 };
 
 /** 生成阶段（进度展示用） */

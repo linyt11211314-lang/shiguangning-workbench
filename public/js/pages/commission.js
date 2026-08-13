@@ -279,9 +279,7 @@ export function render(container, { navigate, rerender }) {
   container.innerHTML = `
     <!-- 页面头部 -->
     <div class="comm-page-header">
-      <div>
-        <div class="comm-page-kicker">COMMISSION & SALARY PLAN</div>
-      </div>
+      <div></div>
       <div class="comm-header-actions">
         <div class="comm-status comm-status--saved" id="comm-status">🟢 本地已保存</div>
         <select class="input input-sm month-select" data-month-select>

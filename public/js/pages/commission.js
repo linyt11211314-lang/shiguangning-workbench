@@ -229,7 +229,6 @@ export function render(container, { navigate, rerender }) {
 
   container.innerHTML = `
     <div class="comm-intro">
-      <div class="comm-intro-icon">${icon('target')}</div>
       <div>
         <div class="comm-intro-title">我的提成预估</div>
         <div class="comm-intro-sub">按昨天以前的完整数据推算提成 · 所有数据本地保存</div>
@@ -241,19 +240,16 @@ export function render(container, { navigate, rerender }) {
     <!-- 顶部概览 -->
     <div class="ov-row">
       <div class="ov-card ov-primary">
-        <div class="ov-icon" style="background:linear-gradient(135deg,var(--grad-a1),var(--grad-a2));color:var(--grad-afg)">${icon('chart')}</div>
         <div class="ov-label">预计总提成</div>
         <div class="ov-value" id="ov-total">¥0.00</div>
         <div class="ov-sub" id="ov-total-sub">AE ¥0.00 · SA ¥0.00</div>
       </div>
       <div class="ov-card ov-green">
-        <div class="ov-icon" style="background:linear-gradient(135deg,var(--grad-g1),var(--grad-g2));color:var(--grad-gfg)">${icon('briefcase')}</div>
         <div class="ov-label">预计到手工资</div>
         <div class="ov-value" id="ov-take">¥0.00</div>
         <div class="ov-sub" id="ov-take-sub">底薪 − 五险一金 + 提成</div>
       </div>
       <div class="ov-card ov-blue">
-        <div class="ov-icon" style="background:linear-gradient(135deg,var(--grad-b1),var(--grad-b2));color:var(--grad-bfg)">${icon('database')}</div>
         <div class="ov-label">规划可用余额</div>
         <div class="ov-value" id="ov-avail">¥0.00</div>
         <div class="ov-sub" id="ov-avail-sub">计划支出 ¥0.00</div>

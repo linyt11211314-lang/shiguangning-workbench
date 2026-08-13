@@ -1123,8 +1123,6 @@ html, body {
 
 /* ===== 我的提成预估 ===== */
 .comm-intro { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; }
-.comm-intro-icon { width: 46px; height: 46px; border-radius: 14px; background: var(--primary-soft); color: var(--primary-deep); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-.comm-intro-icon svg { width: 24px; height: 24px; }
 .comm-intro-title { font-size: 19px; font-weight: 800; color: var(--text); }
 .comm-intro-sub { font-size: 13px; color: var(--text-sub); margin-top: 2px; }
 
@@ -1134,9 +1132,7 @@ html, body {
 .comm-status--error { background: var(--red-soft); color: var(--red); cursor: pointer; }
 
 .ov-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 18px; }
-.ov-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-card); padding: 18px 20px; position: relative; overflow: hidden; }
-.ov-icon { width: 40px; height: 40px; border-radius: 12px; display: flex; align-items: center; justify-content: center; margin-bottom: 12px; }
-.ov-icon svg { width: 22px; height: 22px; }
+.ov-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-card); padding: 14px 20px 18px; position: relative; overflow: hidden; }
 .ov-label { font-size: 13px; color: var(--text-sub); font-weight: 600; }
 .ov-value { font-size: 27px; font-weight: 800; color: var(--text); line-height: 1.15; margin: 3px 0 6px; letter-spacing: -.5px; }
 .ov-sub { font-size: 12.5px; color: var(--text-faint); }

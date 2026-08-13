@@ -1,7 +1,7 @@
 /**
  * 日程计划页：待办任务管理（含计划时间 + 完成状态）
- * - 未填写计划日期或已完成的任务不会同步到首页待办
- * - 已完成项可一键取消完成
+ * - 所有未完成任务都会同步到首页待办区
+ * - 已完成项可一键取消完成；删除入口在列表行垃圾桶按钮与编辑弹窗内
  */
 import { icon } from '../ui/icons.js';
 import { esc } from '../utils.js';
@@ -187,11 +187,21 @@ export function openEditModal(t, onSaved) {
     title: '编辑日程',
     body,
     footer: `
+      <button class="btn btn-danger-soft" data-m-del style="margin-right:auto">删除</button>
       <button class="btn btn-ghost" data-m-cancel>取消</button>
       <button class="btn btn-primary" data-m-save>保存</button>`,
   });
   const foot = m.el.querySelector('.modal-foot');
   foot.querySelector('[data-m-cancel]').addEventListener('click', m.close);
+  foot.querySelector('[data-m-del]').addEventListener('click', () => {
+    confirmDialog({
+      title: '删除日程',
+      message: `确定删除「${t.title}」吗？`,
+      confirmText: '删除',
+      danger: true,
+      onConfirm: () => { removeTaskTracked(t.id); onSaved(); m.close(); },
+    });
+  });
   foot.querySelector('[data-m-save]').addEventListener('click', () => {
     const v = titleInput.value.trim();
     if (!v) { titleInput.focus(); return; }

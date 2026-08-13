@@ -612,7 +612,7 @@ function renderResult(container, { navigate }) {
     tip: p.title ? `${p.title.length} / 200 字符` : '',
     content: () => `<div class="gen-title">${esc(p.title || '（尚未生成）')}</div>`,
     editContent: () => `<textarea class="result-textarea" data-edit-val rows="3">${esc(p.title || '')}</textarea>`,
-    onCopy: () => copyText(p.title || ''),
+    onCopy: () => p.title || '',
     onRegen: (setBusy) => regenSection('title', p, (nv) => { p.title = nv; resultsBox.replaceChildren(...[]); renderResult(container, { navigate }); }, setBusy),
     onSaveEdit: (val) => { p.title = val; },
   }));
@@ -638,7 +638,7 @@ function renderResult(container, { navigate }) {
           <textarea class="result-textarea" data-edit-val="${i}" rows="3" style="min-height:0">${esc(b)}</textarea>
         </div>`).join('')}</div>`;
     },
-    onCopy: () => copyText((p.bulletPoints || []).filter(Boolean).map((b, i) => `${i + 1}. ${b}`).join('\n\n')),
+    onCopy: () => (p.bulletPoints || []).filter(Boolean).map((b, i) => `${i + 1}. ${b}`).join('\n\n'),
     onRegen: (setBusy) => regenSection('bullets', p, (nv) => { p.bulletPoints = nv; resultsBox.replaceChildren(...[]); renderResult(container, { navigate }); }, setBusy),
     onSaveEdit: (vals) => { p.bulletPoints = vals.map((v) => v.trim()); },
   }));
@@ -650,7 +650,7 @@ function renderResult(container, { navigate }) {
     tip: '支持简单 HTML',
     content: () => `<div class="gen-desc-text">${esc(p.description || '（尚未生成）')}</div>`,
     editContent: () => `<textarea class="result-textarea" data-edit-val rows="8">${esc(p.description || '')}</textarea>`,
-    onCopy: () => copyText(p.description || ''),
+    onCopy: () => p.description || '',
     onRegen: (setBusy) => regenSection('description', p, (nv) => { p.description = nv; resultsBox.replaceChildren(...[]); renderResult(container, { navigate }); }, setBusy),
     onSaveEdit: (val) => { p.description = val; },
   }));
@@ -667,7 +667,7 @@ function renderResult(container, { navigate }) {
         : '<span class="faint">（尚未生成）</span>'}</div>`;
     },
     editContent: () => `<textarea class="result-textarea" data-edit-val rows="5" placeholder="每行一个关键词，或空格/逗号分隔">${esc((p.searchTerms || []).join('\n'))}</textarea>`,
-    onCopy: () => copyText((p.searchTerms || []).join(', ')),
+    onCopy: () => (p.searchTerms || []).join(', '),
     onRegen: (setBusy) => regenSection('searchTerms', p, (nv) => { p.searchTerms = nv; resultsBox.replaceChildren(...[]); renderResult(container, { navigate }); }, setBusy),
     onSaveEdit: (val) => {
       p.searchTerms = [...new Set(val.split(/[\s,，;；\n]+/).map((s) => s.trim().toLowerCase()).filter(Boolean))];
@@ -710,7 +710,7 @@ function renderResult(container, { navigate }) {
           <textarea class="result-textarea" data-edit-img="aPlus" rows="5">${esc((img.aPlus || []).map((a) => `【${a.title}】${a.body}`).join('\n'))}</textarea>
         </div>
       </div>`,
-    onCopy: () => copyText(`【主图卖点】\n${img.main || ''}\n\n【五点图文案】\n${(img.bullets || []).map((b, i) => `${i + 1}. ${b}`).join('\n')}\n\n【A+ 模块】\n${(img.aPlus || []).map((a) => `【${a.title}】${a.body}`).join('\n')}`),
+    onCopy: () => `【主图卖点】\n${img.main || ''}\n\n【五点图文案】\n${(img.bullets || []).map((b, i) => `${i + 1}. ${b}`).join('\n')}\n\n【A+ 模块】\n${(img.aPlus || []).map((a) => `【${a.title}】${a.body}`).join('\n')}`,
     onRegen: (setBusy) => regenSection('imageSuggestions', p, (nv) => { p.imageSuggestions = nv; resultsBox.replaceChildren(...[]); renderResult(container, { navigate }); }, setBusy),
     onSaveEdit: (vals) => {
       p.imageSuggestions = {
@@ -758,7 +758,7 @@ function renderResult(container, { navigate }) {
             <div class="cb-body">${(ca.optimizationSuggestions || []).map((a, i) => `${i + 1}. ${esc(a)}`).join('\n')}</div>
           </div>` : ''}
         </div>`,
-      onCopy: () => copyText(JSON.stringify(ca, null, 2)),
+      onCopy: () => JSON.stringify(ca, null, 2),
       onRegen: (setBusy) => regenSection('competitor', p, (nv) => { p.competitorAnalysis = nv; resultsBox.replaceChildren(...[]); renderResult(container, { navigate }); }, setBusy),
     });
     resultsBox.appendChild(block);

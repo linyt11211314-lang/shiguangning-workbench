@@ -34,6 +34,7 @@ const TITLES = {
 };
 
 let currentRoute = 'home';
+const ROUTE_KEY = 'sgn.route';
 
 function pageOf(route) {
   if (route === 'home' || route === 'library' || route === 'settings' || route === 'commission' || route === 'schedule') return route;
@@ -44,6 +45,7 @@ function pageOf(route) {
 /** 全局路由跳转 */
 export function navigate(route) {
   currentRoute = route;
+  try { localStorage.setItem(ROUTE_KEY, route); } catch (_) {}
   renderShell();
   renderPage();
 }
@@ -116,6 +118,15 @@ function renderPage() {
 function init() {
   // 应用已保存的主题（明暗模式 + 主题色）
   applyTheme();
+
+  // 恢复上次停留的页面（刷新不跳回首页）
+  try {
+    const saved = localStorage.getItem(ROUTE_KEY);
+    if (saved && pageOf(saved) === saved) currentRoute = saved;
+    // 兼容 listing:open:xxx / listing:new 等子路由
+    else if (saved && saved.startsWith('listing')) currentRoute = saved;
+  } catch (_) {}
+
   renderShell();
   renderPage();
 
@@ -130,6 +141,10 @@ function init() {
   onProjectsChange(refresh);
   onProductsChange(refresh);
   onScheduleChange(refresh);
+
+  // 左上角品牌「拾光柠」点击回首页
+  const logo = document.querySelector('.sidebar-logo');
+  if (logo) logo.addEventListener('click', () => navigate('home'));
 }
 
 init();

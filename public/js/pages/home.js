@@ -6,6 +6,7 @@ import { esc, timeAgo } from '../utils.js';
 import { countProjects, countGeneratedToday, listProjects } from '../store/projectStore.js';
 import { countProducts } from '../store/productStore.js';
 import { listPendingWithDue, updateTaskTracked } from '../store/scheduleStore.js';
+import { openEditModal } from './schedule.js';
 import { aiCallsCount } from '../store/statsStore.js';
 import { hasApiKey } from '../store/settingsStore.js';
 import { toastSuccess } from '../ui/toast.js';
@@ -132,35 +133,43 @@ export function render(container, { navigate }) {
 
   // 待办事项（来自日程计划：有计划日期且未完成，按时间升序）
   const todosBox = container.querySelector('[data-todos]');
-  const todos = listPendingWithDue().slice(0, 6);
-  if (!todos.length) {
-    todosBox.innerHTML = `
-      <div class="empty-state" style="padding:18px 14px">
-        <div class="empty-sub">暂无待办，已完成或没填计划日期的不显示在这里。</div>
-        <div class="mt-12"><button class="btn btn-soft btn-sm" data-nav="schedule">去日程计划添加</button></div>
-      </div>`;
-  } else {
+  function renderTodos() {
+    const todos = listPendingWithDue().slice(0, 6);
+    if (!todos.length) {
+      todosBox.innerHTML = `
+        <div class="empty-state" style="padding:18px 14px">
+          <div class="empty-sub">暂无待办，已完成或没填计划日期的不显示在这里。</div>
+          <div class="mt-12"><button class="btn btn-soft btn-sm" data-nav="schedule">去日程计划添加</button></div>
+        </div>`;
+      return;
+    }
     todosBox.innerHTML = todos.map((t) => {
       const ov = homeIsOverdue(t.dueDate);
       return `
-      <div class="todo-item ${ov ? 'overdue' : ''}" data-todo="${t.id}" title="点击一键完成">
-        <button class="todo-check" data-done>○</button>
+      <div class="todo-item ${ov ? 'overdue' : ''}" data-todo="${t.id}">
+        <button class="todo-check" data-done title="标记为已完成">○</button>
         <div class="flex-1" style="min-width:0">
           <div class="todo-title">${esc(t.title)}</div>
           <div class="todo-due ${ov ? 'todo-due-over' : ''}">📅 ${homeDueText(t.dueDate)}</div>
         </div>
+        <button class="todo-edit" data-edit-todo title="编辑待办">✎</button>
         <span class="hq-arrow" style="color:var(--text-faint)">→</span>
       </div>`;
     }).join('');
   }
+  renderTodos();
 
-  // 事件
+  // 事件：点击圆圈或整项=一键完成；点击编辑按钮=打开编辑
   todosBox.addEventListener('click', (e) => {
     const el = e.target.closest('[data-todo]');
     if (!el) return;
     const id = el.dataset.todo;
     const t = listPendingWithDue().find((x) => x.id === id);
     if (!t) return;
+    if (e.target.closest('[data-edit-todo]')) {
+      openEditModal(t, renderTodos);
+      return;
+    }
     updateTaskTracked(id, { done: true });
     toastSuccess(`已完成：${t.title}`);
   });

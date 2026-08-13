@@ -164,7 +164,7 @@ export function render(container, { rerender } = {}) {
   renderList();
 }
 
-function openEditModal(t, onSaved) {
+export function openEditModal(t, onSaved) {
   const body = document.createElement('div');
   body.innerHTML = `
     <div class="field" style="margin-bottom:12px">

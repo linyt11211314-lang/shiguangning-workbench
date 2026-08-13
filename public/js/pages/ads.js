@@ -22,6 +22,13 @@ import {
   buildRecords,
   validateMapping,
 } from '../services/adParse.js';
+import { diagnose, suggestionToText } from '../services/diagnose.js';
+import {
+  addFeedback,
+  listFeedback,
+  feedbackStats,
+  latestFeedback,
+} from '../store/feedbackStore.js';
 
 const MAX_FILE_MB = 10;
 const ACCEPT = '.xlsx,.xls,.csv';
@@ -31,6 +38,10 @@ const PREVIEW_LIMIT = 50;
 let viewRange = '7d'; // '7d' | '30d' | 'custom'
 let viewStart = null; // 'YYYY-MM-DD'
 let viewEnd = null;
+
+// —— 诊断面板状态（模块级，跨重渲染保持）——
+let isDiagnosing = false; // 刷新诊断时的加载态
+let currentSuggestions = []; // 当前渲染的建议列表（供采纳/忽略按 id 查找）
 
 function fmtNum(v, dec = 2) {
   const n = Number(v) || 0;
@@ -62,6 +73,12 @@ function eachDateRange(start, end) {
     cur = addDays(cur, 1);
   }
   return out;
+}
+/** 当前看板范围的可读描述（用于诊断面板文案） */
+function rangeLabel() {
+  if (viewRange === '7d') return '近7天';
+  if (viewRange === '30d') return '近30天';
+  return '自定义区间';
 }
 /** ACOS 健康度配色 */
 function acosHealth(acos, hasSales) {
@@ -148,11 +165,20 @@ export function render(container, { rerender } = {}) {
   const sites = [...new Set(all.map((r) => r.site))].sort();
   const daily = dailySeries(ranged, start, end);
 
-  container.innerHTML = header + renderDashboard(ranged, imports, start, end, daily, sites);
+  // 诊断建议（刷新加载态时跳过重新计算，保留原结果）
+  let diag = { suggestions: [] };
+  if (!isDiagnosing) {
+    diag = diagnose(ranged, { all, start, end, rangeLabel: rangeLabel() });
+    currentSuggestions = diag.suggestions;
+  }
+
+  container.innerHTML =
+    header + renderDashboard(ranged, imports, start, end, daily, sites, diag);
 
   wireHeader(container, rerender);
   wireFilter(container, rerender);
   wireDashboard(container, ranged, daily);
+  wireDiagnosis(container, rerender);
 
   // 删除导入批次
   container.querySelectorAll('[data-del-import]').forEach((btn) => {
@@ -205,7 +231,7 @@ function wireHeader(container, rerender) {
   });
 }
 
-function renderDashboard(ranged, imports, start, end, daily, sites) {
+function renderDashboard(ranged, imports, start, end, daily, sites, diag) {
   const ov = summarize(ranged);
   const ovHealth = acosHealth(ov.acos, ov.sales > 0);
   const totalClicks = ov.clicks;
@@ -311,6 +337,8 @@ function renderDashboard(ranged, imports, start, end, daily, sites) {
       </div>
     </div>
 
+    ${renderDiagnosis(diag)}
+
     <div class="card" style="margin-bottom:18px">
       <div class="card-pad">
         <div class="section-head" style="margin-bottom:10px">
@@ -342,11 +370,13 @@ function renderDashboard(ranged, imports, start, end, daily, sites) {
             <thead>
               <tr><th>日期</th><th>站点</th><th class="num">花费</th><th class="num">销售额</th><th class="num">曝光</th><th class="num">点击</th><th class="num">订单</th></tr>
             </thead>
-            <tbody>${tableRows || '<tr><td colspan="7" style="text-align:center;color:var(--text-sub)">该时间范围内暂无数据</td></tr>'}</tbody>
-          </table>
+            <tbody>${tableRows || '<tr><td colspan="7" style="text-align:center;color:var(--text-sub)">该时间范围内暂无数据</td></tr>'}          </tbody>
+        </table>
         </div>
       </div>
-    </div>`;
+    </div>
+
+    ${renderFeedbackFooter()}`;
 }
 
 function renderRangeFilter() {
@@ -427,6 +457,202 @@ function wireDashboard(container, ranged, daily) {
   } else {
     chartEl.innerHTML = '<div class="ads-empty">该时间范围内暂无数据可绘制趋势</div>';
   }
+}
+
+function renderDiagnosis(diag) {
+  if (isDiagnosing) {
+    return `
+    <div class="card diag-panel">
+      <div class="card-pad diag-loading"><span class="diag-spin"></span> 正在分析数据并生成诊断建议…</div>
+    </div>`;
+  }
+  const n = diag.suggestions.length;
+  const header = `
+    <div class="section-head" style="margin-bottom:10px">
+      <div class="section-title">🧠 诊断建议</div>
+      <div class="diag-actions-top">
+        <button class="btn btn-soft btn-sm" data-diag-refresh>${icon('refresh')} 刷新诊断</button>
+        <button class="btn btn-ghost btn-sm" data-diag-stats>${icon('chart')} 反馈统计</button>
+      </div>
+    </div>`;
+  const sub = n
+    ? `<div class="diag-sub">基于${rangeLabel()}数据自动生成 · 共 ${n} 条建议（按优先级排序）</div>`
+    : '';
+  const body =
+    n === 0
+      ? `<div class="diag-nodata">🎉 当前区间数据未触发任何风险项，各项指标处于健康范围，继续保持关注即可。</div>`
+      : diag.suggestions.map(renderDiagCard).join('');
+  return `<div class="card diag-panel"><div class="card-pad">${header}${sub}${body}</div></div>`;
+}
+
+function renderDiagCard(sug) {
+  const prioCfg = {
+    high: { cls: 'high', icon: '🔴', label: '高优先级' },
+    mid: { cls: 'mid', icon: '🟡', label: '中优先级' },
+    low: { cls: 'low', icon: '🟢', label: '低优先级' },
+  }[sug.priority];
+  const points = sug.points.map((p) => `<li>${esc(p)}</li>`).join('');
+  const fb = latestFeedback(sug.site, sug.ruleKey);
+  const actions = fb
+    ? `<div class="diag-resolved ${fb.feedback === 'accept' ? 'ok' : 'no'}">${
+        fb.feedback === 'accept' ? '✅ 已采纳' : '❌ 已忽略'
+      } · ${new Date(fb.at).toLocaleString('zh-CN')}</div>`
+    : `<div class="diag-card-actions">
+        <button class="btn btn-soft btn-sm" data-accept="${esc(sug.id)}">👍 采纳</button>
+        <button class="btn btn-ghost btn-sm" data-ignore="${esc(sug.id)}">👎 忽略</button>
+      </div>`;
+  return `
+    <div class="diag-card diag-${prioCfg.cls}">
+      <div class="diag-card-head">
+        <span class="diag-prio prio-${prioCfg.cls}">${prioCfg.icon} ${prioCfg.label}</span>
+        <span class="diag-site">${esc(sug.siteLabel)}</span>
+      </div>
+      <div class="diag-issue">${esc(sug.problem)}</div>
+      <div class="diag-advice"><span class="diag-advice-label">💡 建议：</span>
+        <ol class="diag-points">${points}</ol>
+      </div>
+      ${actions}
+    </div>`;
+}
+
+function renderFeedbackFooter() {
+  const st = feedbackStats();
+  if (st.total === 0) return '';
+  return `
+    <div class="card diag-footer">
+      <div class="card-pad fb-footer-inner">
+        📊 诊断反馈统计：采纳 <b>${st.accept}</b> 条 · 忽略 <b>${st.ignore}</b> 条 · 采纳率 <b>${st.rate.toFixed(1)}%</b>
+        <button class="btn btn-soft btn-sm fb-footer-link" data-diag-stats>查看全部反馈</button>
+      </div>
+    </div>`;
+}
+
+function wireDiagnosis(container, rerender) {
+  // 刷新诊断（带加载态）
+  container.querySelectorAll('[data-diag-refresh]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      if (isDiagnosing) return;
+      isDiagnosing = true;
+      rerender(); // 显示「诊断中…」
+      setTimeout(() => {
+        isDiagnosing = false;
+        rerender();
+        toastSuccess('✅ 诊断已刷新');
+      }, 550);
+    });
+  });
+
+  // 反馈统计入口（面板头部 / 底部 footer 共用）
+  container.querySelectorAll('[data-diag-stats]').forEach((btn) => {
+    btn.addEventListener('click', () => openFeedbackModal(rerender));
+  });
+
+  // 采纳 / 忽略
+  container.querySelectorAll('[data-accept]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const sug = currentSuggestions.find((s) => s.id === btn.dataset.accept);
+      if (!sug) return;
+      confirmDialog({
+        title: '采纳诊断建议',
+        message: `${sug.siteLabel}\n${sug.problem}\n\n建议：\n${sug.points.map((p, i) => `${i + 1}. ${p}`).join('\n')}`,
+        confirmText: '采纳',
+        onConfirm: () => {
+          addFeedback({
+            id: sug.id,
+            site: sug.site,
+            ruleKey: sug.ruleKey,
+            priority: sug.priority,
+            content: suggestionToText(sug),
+            trigger: sug.trigger,
+            feedback: 'accept',
+            at: Date.now(),
+          });
+          toastSuccess('✅ 已记录你的反馈，感谢！');
+          rerender();
+        },
+      });
+    });
+  });
+  container.querySelectorAll('[data-ignore]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const sug = currentSuggestions.find((s) => s.id === btn.dataset.ignore);
+      if (!sug) return;
+      confirmDialog({
+        title: '忽略诊断建议',
+        message: '确认忽略该建议？此操作仅记录你的反馈，不影响已导入的数据。',
+        confirmText: '忽略',
+        onConfirm: () => {
+          addFeedback({
+            id: sug.id,
+            site: sug.site,
+            ruleKey: sug.ruleKey,
+            priority: sug.priority,
+            content: suggestionToText(sug),
+            trigger: sug.trigger,
+            feedback: 'ignore',
+            at: Date.now(),
+          });
+          toastInfo('已忽略该建议');
+          rerender();
+        },
+      });
+    });
+  });
+}
+
+function openFeedbackModal(rerender) {
+  const fb = listFeedback();
+  const st = feedbackStats();
+  const rows = fb.length
+    ? fb
+        .map((f, i) => {
+          const date = new Date(f.at).toLocaleString('zh-CN');
+          const summary = (f.content || '').slice(0, 42);
+          const fbBadge =
+            f.feedback === 'accept'
+              ? '<span class="fb-accept">✅ 采纳</span>'
+              : '<span class="fb-ignore">❌ 忽略</span>';
+          return `
+          <tr>
+            <td>${esc(date)}</td>
+            <td>${esc(f.site)}</td>
+            <td class="fb-summary">${esc(summary)}…</td>
+            <td>${fbBadge}</td>
+            <td><button class="btn btn-ghost btn-sm" data-fb-view="${i}">查看</button></td>
+          </tr>
+          <tr class="fb-detail-row" data-fb-detail="${i}" hidden>
+            <td colspan="5"><div class="fb-detail">${esc(f.content || '')}</div></td>
+          </tr>`;
+        })
+        .join('')
+    : '<tr><td colspan="5" style="text-align:center;color:var(--text-sub)">暂无反馈记录</td></tr>';
+
+  const body = `
+    <div class="fb-stat-bar">
+      <span>采纳：<b class="fb-accept">${st.accept}</b> 条</span>
+      <span>忽略：<b class="fb-ignore">${st.ignore}</b> 条</span>
+      <span>采纳率：<b>${st.rate.toFixed(1)}%</b></span>
+    </div>
+    <div class="table-scroll" style="max-height:420px">
+      <table class="data-table">
+        <thead><tr><th>日期</th><th>站点</th><th>建议摘要</th><th>反馈</th><th>操作</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+
+  const m = openModal({
+    title: '诊断反馈历史',
+    body,
+    width: 'wide',
+    footer: `<button class="btn btn-ghost" data-close>关闭</button>`,
+  });
+  m.el.querySelector('[data-close]').onclick = m.close;
+  m.el.querySelectorAll('[data-fb-view]').forEach((b) => {
+    b.addEventListener('click', () => {
+      const row = m.el.querySelector(`[data-fb-detail="${b.dataset.fbView}"]`);
+      if (row) row.hidden = !row.hidden;
+    });
+  });
 }
 
 function openImportModal(rerender) {
@@ -590,8 +816,9 @@ function openImportModal(rerender) {
 
 function exportData(records) {
   if (!records.length) return;
-  const ws = XLSX.utils.json_to_sheet(
-    records.map((r) => ({
+  const hasTotal = records.some((r) => r.totalSales > 0);
+  const rows = records.map((r) => {
+    const row = {
       日期: r.date,
       站点: r.site,
       花费: r.cost,
@@ -599,8 +826,14 @@ function exportData(records) {
       曝光: r.impressions,
       点击: r.clicks,
       订单: r.orders,
-    }))
-  );
+    };
+    if (hasTotal) {
+      row['总销售额'] = r.totalSales || 0;
+      row['广告占比'] = r.totalSales > 0 ? `${((r.sales / r.totalSales) * 100).toFixed(1)}%` : '';
+    }
+    return row;
+  });
+  const ws = XLSX.utils.json_to_sheet(rows);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, '广告明细');
   const d = new Date().toISOString().slice(0, 10);

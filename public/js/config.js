@@ -101,6 +101,7 @@ export const STORAGE_KEYS = {
   STATS: 'sgn.stats',
   SCHEDULE: 'sgn.schedules',
   ADS: 'sgn.ads',
+  FEEDBACK: 'sgn.ads.feedback',
 };
 
 /** 生成阶段（进度展示用） */

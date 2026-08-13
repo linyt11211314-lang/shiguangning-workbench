@@ -39,12 +39,19 @@ export function listTasks() {
 }
 
 /**
- * 待同步到首页的待办：已填写计划日期且未完成，按 dueDate 升序（越早越靠前）。
+ * 待同步到首页的待办：所有未完成任务。
+ * 排序：有计划日期的按日期升序排在前，无日期的排在后面（按更新时间倒序）。
  */
-export function listPendingWithDue() {
+export function listPending() {
   return load()
-    .filter((t) => !t.done && t.dueDate)
-    .sort((a, b) => (a.dueDate < b.dueDate ? -1 : a.dueDate > b.dueDate ? 1 : 0));
+    .filter((t) => !t.done)
+    .sort((a, b) => {
+      const aHas = a.dueDate ? 1 : 0;
+      const bHas = b.dueDate ? 1 : 0;
+      if (aHas !== bHas) return bHas - aHas; // 有日期的排前面
+      if (aHas && bHas) return a.dueDate < b.dueDate ? -1 : a.dueDate > b.dueDate ? 1 : 0;
+      return (b.updatedAt || 0) - (a.updatedAt || 0);
+    });
 }
 
 export function getTask(id) {

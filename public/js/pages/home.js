@@ -5,7 +5,7 @@ import { icon } from '../ui/icons.js';
 import { esc, timeAgo } from '../utils.js';
 import { countProjects, countGeneratedToday, listProjects } from '../store/projectStore.js';
 import { countProducts } from '../store/productStore.js';
-import { listPendingWithDue, updateTaskTracked } from '../store/scheduleStore.js';
+import { listPending, updateTaskTracked } from '../store/scheduleStore.js';
 import { openEditModal } from './schedule.js';
 import { aiCallsCount } from '../store/statsStore.js';
 import { hasApiKey } from '../store/settingsStore.js';
@@ -73,7 +73,7 @@ export function render(container, { navigate }) {
       <div class="card-pad">
         <div class="section-head" style="margin-bottom:6px">
           <div class="section-title">待办事项</div>
-          <span class="section-sub">来自日程计划 · 有计划日期且未完成</span>
+          <span class="section-sub">来自日程计划 · 已添加且未完成</span>
           <span class="flex-1"></span>
           <button class="btn btn-soft btn-sm" data-nav="schedule">全部日程</button>
         </div>
@@ -134,23 +134,26 @@ export function render(container, { navigate }) {
   // 待办事项（来自日程计划：有计划日期且未完成，按时间升序）
   const todosBox = container.querySelector('[data-todos]');
   function renderTodos() {
-    const todos = listPendingWithDue().slice(0, 6);
+    const todos = listPending().slice(0, 6);
     if (!todos.length) {
       todosBox.innerHTML = `
         <div class="empty-state" style="padding:18px 14px">
-          <div class="empty-sub">暂无待办，已完成或没填计划日期的不显示在这里。</div>
+          <div class="empty-sub">暂无待办，已完成的不会显示在这里。</div>
           <div class="mt-12"><button class="btn btn-soft btn-sm" data-nav="schedule">去日程计划添加</button></div>
         </div>`;
       return;
     }
     todosBox.innerHTML = todos.map((t) => {
       const ov = homeIsOverdue(t.dueDate);
+      const dueHtml = t.dueDate
+        ? `<div class="todo-due ${ov ? 'todo-due-over' : ''}">📅 ${homeDueText(t.dueDate)}</div>`
+        : `<div class="todo-due todo-due-none">无计划日期</div>`;
       return `
       <div class="todo-item ${ov ? 'overdue' : ''}" data-todo="${t.id}">
         <button class="todo-check" data-done title="标记为已完成">○</button>
         <div class="flex-1" style="min-width:0">
           <div class="todo-title">${esc(t.title)}</div>
-          <div class="todo-due ${ov ? 'todo-due-over' : ''}">📅 ${homeDueText(t.dueDate)}</div>
+          ${dueHtml}
         </div>
         <button class="todo-edit" data-edit-todo title="编辑待办">✎</button>
         <span class="hq-arrow" style="color:var(--text-faint)">→</span>
@@ -164,7 +167,7 @@ export function render(container, { navigate }) {
     const el = e.target.closest('[data-todo]');
     if (!el) return;
     const id = el.dataset.todo;
-    const t = listPendingWithDue().find((x) => x.id === id);
+    const t = listPending().find((x) => x.id === id);
     if (!t) return;
     if (e.target.closest('[data-edit-todo]')) {
       openEditModal(t, renderTodos);

@@ -1360,4 +1360,5 @@ html, body {
 .todo-title { font-size: 14px; font-weight: 600; color: var(--text); line-height: 1.4; }
 .todo-due { font-size: 12px; color: var(--text-sub); margin-top: 2px; }
 .todo-due-over { color: var(--red); font-weight: 600; }
+.todo-due-none { color: var(--text-faint); }
 

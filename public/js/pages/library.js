@@ -541,10 +541,6 @@ function openProductModal(existing, onDone) {
       <div class="field-label">产品图片 <span class="hint">点击 / 拖拽 / Ctrl+V 粘贴上传，最多 ${MAX_IMAGES} 张</span></div>
       <div data-uploader></div>
     </div>
-    <div class="field">
-      <div class="field-label">产品名称 <span class="req">*</span></div>
-      <input class="input" data-f="name" placeholder="例如：Portable Blender 便携榨汁杯">
-    </div>
     <div class="field" style="margin-top:-6px">
       <div class="field-label">Amazon 链接 <span class="hint">可选 · 点击下方链接可新窗口打开</span></div>
       <input class="input" data-f="amazonUrl" placeholder="https://www.amazon.com/dp/B0XXXXXX 或 amazon.com/dp/B0XXXXXX">
@@ -560,7 +556,11 @@ function openProductModal(existing, onDone) {
         </label>`).join('')}
     </div>
 
-    <div class="form-grid">
+    <div class="form-grid" style="grid-template-columns:1.5fr 1fr">
+      <div class="field">
+        <div class="field-label">产品名称 <span class="req">*</span></div>
+        <input class="input" data-f="name" placeholder="例如：Portable Blender 便携榨汁杯">
+      </div>
       <div class="field">
         <div class="field-label">产品类目 <span class="hint">自由文本，如 Home &amp; Kitchen</span></div>
         <input class="input" data-f="productCategory" placeholder="例如：Home & Kitchen">

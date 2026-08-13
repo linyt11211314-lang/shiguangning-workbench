@@ -699,7 +699,7 @@ html, body {
 /* ---------- 选品库：列表视图 ---------- */
 .lib-grid-table {
   display: grid;
-  grid-template-columns: 36px 54px minmax(220px, 1fr) 100px 100px 150px 130px 138px auto;
+  grid-template-columns: 36px 54px minmax(220px, 1fr) 100px 100px 150px 130px 138px minmax(320px, auto);
   gap: 14px;
   padding: 0 20px;
 }
@@ -746,9 +746,19 @@ html, body {
 .lib-cell.price { font-weight: 700; color: var(--green); font-size: 14px; text-align: left; }
 .lib-cell.size { font-size: 12px; font-variant-numeric: tabular-nums; text-align: left; }
 .lib-cell.profit { font-weight: 600; color: var(--text); font-size: 13px; font-variant-numeric: tabular-nums; text-align: left; }
-.lib-actions { display: flex; gap: 6px; justify-content: flex-end; flex-wrap: wrap; }
+.lib-grid-table .lib-actions {
+  display: flex;
+  gap: 4px;
+  justify-content: flex-end;
+  flex-wrap: nowrap;
+  margin-top: 0;
+}
+.lib-grid-table .lib-actions .btn-sm {
+  padding: 5px 8px;
+  font-size: 12px;
+}
 @media (max-width: 1080px) {
-  .lib-grid-table { grid-template-columns: 32px 46px minmax(160px, 1fr) 100px 100px auto; }
+  .lib-grid-table { grid-template-columns: 32px 46px minmax(160px, 1fr) 100px 100px minmax(280px, auto); }
   .lib-grid-table > .lib-table-head > span:nth-child(6),
   .lib-grid-table > .lib-table-head > span:nth-child(7),
   .lib-grid-table > .lib-table-head > span:nth-child(8),

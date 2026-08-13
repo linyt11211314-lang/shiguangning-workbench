@@ -133,12 +133,32 @@ export function render(container, { navigate, rerender }) {
     });
     const r = recalc();
     paint(r);
+    updateInfoBar();
     const r2 = container.querySelector('#ae-rate2'); if (r2) r2.textContent = `${g('commissionRate')}%`;
     const r3 = container.querySelector('#sa-rate2'); if (r3) r3.textContent = `${g('commissionRate')}%`;
     scheduleSave();
   }
 
   const set = (id, val) => { const el = container.querySelector('#' + id); if (el) el.textContent = val; };
+
+  /** 当前所选月份的实际 vs 预估差额（从已有记录计算，不新增存储字段） */
+  function currentMonthDiff() {
+    const monthSel = container.querySelector('[data-month-select]');
+    const month = monthSel ? monthSel.value : '';
+    const rec = (state.records || []).find((x) => x.month === month);
+    if (!rec || rec.actual == null || Number(rec.actual) === 0) return null;
+    return Number(rec.actual) - Number(rec.est);
+  }
+
+  /** 刷新顶部信息条 */
+  function updateInfoBar() {
+    const monthSel = container.querySelector('[data-month-select]');
+    const month = monthSel ? monthSel.value : '';
+    const total = g('totalDays') || 1;
+    const passed = g('passedDays');
+    const bar = container.querySelector('#comm-info-bar');
+    if (bar) bar.textContent = `历史月数据 ${month}-${String(total).padStart(2, '0')} 截止，共 ${passed}/${total} 天 · 不计入当天数据`;
+  }
 
   function paint(r) {
     // 顶部概览
@@ -148,6 +168,11 @@ export function render(container, { navigate, rerender }) {
     set('ov-take-sub', `底薪 ${fmt(g('baseSalary'))} − 五险一金 ${fmt(g('insurance'))} + 提成`);
     set('ov-avail', fmt(r.available));
     set('ov-avail-sub', `计划支出 ${fmt(r.planExpense)}`);
+    // 实际与预估差额（仅所选月有实际数据时显示）
+    const diff = currentMonthDiff();
+    set('ov-diff', diff == null ? '—' : diffFmt(diff));
+    const diffSub = container.querySelector('#ov-diff-sub');
+    if (diffSub) diffSub.textContent = diff == null ? '选择月份并填写实际提成后自动对比' : '该月实际 − 预估';
     // AE 看板
     set('ae-salesEst', fmt(r.ae.salesEst));
     set('ae-profitEst', fmt(r.ae.profitEst));
@@ -167,6 +192,8 @@ export function render(container, { navigate, rerender }) {
     if (hint) hint.style.display = r.passed > 0 ? 'none' : 'block';
     // 底部参数
     set('foot-params', `计算参数：提成 ${g('commissionRate')}% · AE VAT ${g('aeVatRate')}% · SA VAT ${g('saVatRate')}%`);
+    // 同步信息条
+    updateInfoBar();
   }
 
   // 自动保存状态
@@ -201,25 +228,47 @@ export function render(container, { navigate, rerender }) {
   }
 
   /** 单站点看板 HTML */
-  function siteCard(prefix, flag, name) {
+  function siteCard(prefix, flag, name, accent) {
     return `
-      <div class="card card-pad site-card">
+      <div class="card card-pad site-card site-card-${accent}">
         <div class="section-head">
           <div class="site-flag">${flag}</div>
-          <div class="section-title">${name}</div>
+          <div>
+            <div class="section-title">${name}</div>
+            <div class="section-sub">填写截至统计日的累计数据</div>
+          </div>
           <span style="flex:1"></span>
-          <span class="rate-badge" id="${prefix}-rate">3.0%</span>
+          <span class="vat-badge" id="${prefix}-rate">${prefix === 'ae' ? '5.0%' : '15.0%'} VAT</span>
         </div>
         <div class="form-grid">
-          ${field(prefix + 'Sales', '当前累计销售额', '¥')}
-          ${field(prefix + 'Profit', '当前累计利润', '¥')}
+          ${field(prefix + 'Sales', '当前累计销售额')}
+          ${field(prefix + 'Profit', '当前累计利润')}
         </div>
-        <div class="site-stats">
-          <div class="ss-row"><span>销售额预估</span><b id="${prefix}-salesEst">¥0.00</b></div>
-          <div class="ss-row"><span>整月利润预估</span><b id="${prefix}-profitEst">¥0.00</b></div>
-          <div class="ss-row"><span>VAT</span><b id="${prefix}-vat">¥0.00</b></div>
-          <div class="ss-row"><span>计提成利润</span><b id="${prefix}-base">¥0.00</b></div>
-          <div class="ss-row ss-strong"><span>提成预估</span><b id="${prefix}-comm">¥0.00</b></div>
+        <div class="site-flow">
+          <div class="sf-item">
+            <span class="sf-label">销售额预估</span>
+            <b class="sf-value" id="${prefix}-salesEst">¥0.00</b>
+          </div>
+          <span class="sf-arrow">→</span>
+          <div class="sf-item">
+            <span class="sf-label">整月利润预估</span>
+            <b class="sf-value" id="${prefix}-profitEst">¥0.00</b>
+          </div>
+          <span class="sf-arrow">→</span>
+          <div class="sf-item">
+            <span class="sf-label">VAT</span>
+            <b class="sf-value" id="${prefix}-vat">¥0.00</b>
+          </div>
+        </div>
+        <div class="site-result-bar">
+          <div class="sr-block sr-dark">
+            <span>计提利润</span>
+            <b id="${prefix}-base">¥0.00</b>
+          </div>
+          <div class="sr-block sr-accent">
+            <span>提成预估</span>
+            <b id="${prefix}-comm">¥0.00</b>
+          </div>
         </div>
         <div class="site-foot">填写截至统计日的累计数据 · 提成 <span id="${prefix}-rate2"></span></div>
       </div>`;
@@ -228,43 +277,58 @@ export function render(container, { navigate, rerender }) {
   const defaultMonth = lastMonths(24)[1]; // 默认选中上个月
 
   container.innerHTML = `
-    <div class="comm-intro">
+    <!-- 页面头部 -->
+    <div class="comm-page-header">
       <div>
-        <div class="comm-intro-title">我的提成预估</div>
-        <div class="comm-intro-sub">按昨天以前的完整数据推算提成 · 所有数据本地保存</div>
+        <div class="comm-page-kicker">COMMISSION & SALARY PLAN</div>
+        <div class="comm-page-title">我的提成预估</div>
+        <div class="comm-page-sub">按昨天以前的完整数据推算提成，再把工资安排得明明白白。</div>
       </div>
-      <span style="flex:1"></span>
-      <span class="comm-status comm-status--saved" id="comm-status">🟢 本地已保存</span>
+      <div class="comm-header-actions">
+        <div class="comm-status comm-status--saved" id="comm-status">🟢 本地已保存</div>
+        <select class="input input-sm month-select" data-month-select>
+          ${lastMonths(24).map((m) => `<option value="${m}"${m === defaultMonth ? ' selected' : ''}>${m}</option>`).join('')}
+        </select>
+        <button class="btn btn-primary btn-sm" data-save-month>${icon('save')} 保存本月记录</button>
+      </div>
     </div>
+
+    <!-- 信息条 -->
+    <div class="comm-info-bar" id="comm-info-bar">历史月数据 ${defaultMonth}-31 截止，共 0/31 天 · 不计入当天数据</div>
 
     <!-- 顶部概览 -->
     <div class="ov-row">
-      <div class="ov-card ov-primary">
+      <div class="ov-card ov-card-green">
         <div class="ov-label">预计总提成</div>
         <div class="ov-value" id="ov-total">¥0.00</div>
         <div class="ov-sub" id="ov-total-sub">AE ¥0.00 · SA ¥0.00</div>
       </div>
-      <div class="ov-card ov-green">
+      <div class="ov-card ov-card-blue">
         <div class="ov-label">预计到手工资</div>
         <div class="ov-value" id="ov-take">¥0.00</div>
         <div class="ov-sub" id="ov-take-sub">底薪 − 五险一金 + 提成</div>
       </div>
-      <div class="ov-card ov-blue">
+      <div class="ov-card ov-card-orange">
         <div class="ov-label">规划可用余额</div>
         <div class="ov-value" id="ov-avail">¥0.00</div>
         <div class="ov-sub" id="ov-avail-sub">计划支出 ¥0.00</div>
+      </div>
+      <div class="ov-card ov-card-pink">
+        <div class="ov-label">实际与预估差额</div>
+        <div class="ov-value" id="ov-diff">—</div>
+        <div class="ov-sub" id="ov-diff-sub">选择月份并填写实际提成后自动对比</div>
       </div>
     </div>
 
     <!-- 双站点看板 -->
     <div class="site-grid">
-      ${siteCard('ae', '🇦🇪', 'AE 站点')}
-      ${siteCard('sa', '🇸🇦', 'SA 站点')}
+      ${siteCard('ae', 'AE', 'AE 站点', 'blue')}
+      ${siteCard('sa', 'SA', 'SA 站点', 'orange')}
     </div>
 
     <!-- 计算参数 + 工资规划 -->
     <div class="plan-grid">
-      <div class="card card-pad">
+      <div class="card card-pad plan-card">
         <div class="section-head">
           <div class="section-title">计算参数</div>
           <span style="flex:1"></span>
@@ -282,7 +346,7 @@ export function render(container, { navigate, rerender }) {
         <div class="field-tip" id="passed-hint" style="display:none;color:var(--red)">⚠️ 已过天数为 0，请先填写截至统计日（或手动修改天数）</div>
       </div>
 
-      <div class="card card-pad">
+      <div class="card card-pad plan-card">
         <div class="section-head">
           <div class="section-title">工资与规划</div>
           <span style="flex:1"></span>
@@ -303,20 +367,13 @@ export function render(container, { navigate, rerender }) {
     </div>
 
     <!-- 月度记录与趋势 -->
-    <div class="card card-pad">
+    <div class="card card-pad comm-records-card">
       <div class="section-head">
         <div class="section-title">📈 月度记录与趋势</div>
         <span style="flex:1"></span>
         <button class="btn btn-soft btn-sm" data-export>${icon('download')} 导出历史数据</button>
       </div>
       <div class="field-tip" style="margin-bottom:12px">选择任意月份并保存，预计与实际提成会在这里对比；实际提成公布后直接填写即可自动算差额。点击记录行可把该月数据加载回页面。</div>
-      <div class="month-save-row">
-        <span class="ms-label">保存月份：</span>
-        <select class="input input-sm month-select" data-month-select>
-          ${lastMonths(24).map((m) => `<option value="${m}"${m === defaultMonth ? ' selected' : ''}>${m}</option>`).join('')}
-        </select>
-        <button class="btn btn-primary btn-sm" data-save-month>${icon('save')} 保存该月数据</button>
-      </div>
       <div data-records></div>
     </div>
 
@@ -396,11 +453,23 @@ export function render(container, { navigate, rerender }) {
         const diff = rec.actual - rec.est;
         const dEl = container.querySelector(`[data-diff="${rec.id}"]`);
         if (dEl) { dEl.textContent = diffFmt(diff); dEl.className = 'mono ' + (diff >= 0 ? 'pos' : 'neg'); }
+        // 同步刷新顶部差额卡（如果当前所选月就是该记录月）
+        const ms = container.querySelector('[data-month-select]');
+        if (ms && ms.value === rec.month) paint(recalc());
         scheduleSave();
       }
       return;
     }
   });
+
+  // 月份选择器切换时刷新信息条与差额卡
+  const monthSelect = container.querySelector('[data-month-select]');
+  if (monthSelect) {
+    monthSelect.addEventListener('change', () => {
+      updateInfoBar();
+      paint(recalc());
+    });
+  }
 
   // 删除 / 加载月度记录
   container.addEventListener('click', (e) => {
@@ -447,6 +516,8 @@ export function render(container, { navigate, rerender }) {
       renderRecords();
       scheduleSave();
       toastSuccess(`✅ ${month} 数据已保存`);
+      // 保存后刷新差额卡
+      paint(r);
     };
     if (ex) {
       confirmDialog({

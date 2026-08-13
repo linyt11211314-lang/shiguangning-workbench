@@ -100,8 +100,8 @@ export function render(container, { rerender } = {}) {
             ${t.note ? `<span class="task-note">${esc(t.note)}</span>` : ''}
           </div>
         </div>
-        <button class="task-act" data-edit title="编辑">${icon('edit')}</button>
-        <button class="task-act task-del" data-del title="删除">${icon('trash')}</button>
+        <button class="task-act" data-edit>编辑</button>
+        <button class="task-act task-del" data-del>删除</button>
       </div>`;
     };
 

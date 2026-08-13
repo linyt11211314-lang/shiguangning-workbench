@@ -1327,13 +1327,14 @@ html, body {
 .task-note { color: var(--text-faint); }
 
 .task-act {
-  flex-shrink: 0; width: 30px; height: 30px; border-radius: 8px;
-  border: 1px solid var(--border); background: var(--card); color: var(--text-sub);
+  flex-shrink: 0; height: 28px; border-radius: 8px;
+  border: 1px solid var(--border-strong); background: var(--card-soft); color: var(--text);
   cursor: pointer; display: flex; align-items: center; justify-content: center;
+  padding: 0 10px; font-size: 12px; font-weight: 500;
 }
-.task-act:hover { background: var(--hover-bg); color: var(--text); }
-.task-act svg { width: 15px; height: 15px; }
-.task-del:hover { color: var(--red); border-color: #f3c2c2; background: #fdeaea; }
+.task-act:hover { background: var(--hover-bg); }
+.task-del { color: var(--red); border-color: #f3c2c2; background: #fdeaea; }
+.task-del:hover { background: #fbd9d9; color: #d64545; }
 
 /* 首页待办 */
 .todo-item {

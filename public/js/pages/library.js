@@ -956,7 +956,7 @@ function openProductModal(existing, onDone) {
 
   const initSites = (src && Array.isArray(src.sites) && src.sites.length)
     ? src.sites
-    : (src && src.quote && src.quote.site ? [src.quote.site] : (src ? [src.site || 'US'] : ['US']));
+    : (src && src.quote && src.quote.site ? [src.quote.site] : (src ? [src.site || 'AE'] : ['AE']));
   initSites.forEach((s) => selectedSites.add(s));
   if (src) {
     const qs = src.quotes || (src.quote ? { [src.quote.site || src.site || 'US']: src.quote } : {});
@@ -1063,7 +1063,7 @@ function openProductModal(existing, onDone) {
         result: result && !result.error ? result : null,
       };
     });
-    const mainSite = sites[0] || 'US';
+    const mainSite = sites[0] || 'AE';
     const catEl = body.querySelector('[data-cat-radio] input:checked');
     const cat = catEl ? catEl.value : CATEGORIES[0].id;
     const images = gallery.getValue();

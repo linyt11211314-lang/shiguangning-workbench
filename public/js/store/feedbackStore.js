@@ -59,11 +59,20 @@ export function feedbackStats() {
   return { accept, ignore, total, rate };
 }
 
-/** 查询某站点某规则的最新一条反馈（用于面板标记已处理） */
+/** 查询某站点某规则的最新一条反馈（用于面板标记已处理，按站点+规则维度） */
 export function latestFeedback(site, ruleKey) {
   const arr = load();
   for (const x of arr) {
     if (x.site === site && x.ruleKey === ruleKey) return x;
+  }
+  return null;
+}
+
+/** 按建议 id 精确查询最新反馈（用于关键词/活动级：同站点同规则但不同对象需各自标记） */
+export function feedbackById(id) {
+  const arr = load();
+  for (const x of arr) {
+    if (x.id === id) return x;
   }
   return null;
 }

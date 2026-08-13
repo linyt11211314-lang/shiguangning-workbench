@@ -38,18 +38,19 @@ export function listImports() {
 }
 
 /**
- * 批量写入明细（按 站点+日期 去重）
- * @param {Array} newRecords 待写入明细（已含 importId）
+ * 批量写入明细（按 rec.id 去重；rec.id 已含 站点+日期+关键词+活动+广告类型 维度，
+ * 因此关键词级行不会被站点级行覆盖，也不会互相覆盖）
+ * @param {Array} newRecords 待写入明细（已含 importId 与 id）
  * @param {Object} meta 批次元信息 { site, period, fileName, importId }
  * @returns {{added:number, updated:number, total:number}}
  */
 export function upsertRecords(newRecords, meta) {
   const data = load();
-  const map = new Map(data.records.map((r) => [`${r.site}|${r.date}`, r]));
+  const map = new Map(data.records.map((r) => [r.id, r]));
   let added = 0;
   let updated = 0;
   for (const nr of newRecords) {
-    const k = `${nr.site}|${nr.date}`;
+    const k = nr.id || `${nr.site}|${nr.date}`;
     if (map.has(k)) updated += 1;
     else added += 1;
     map.set(k, nr);

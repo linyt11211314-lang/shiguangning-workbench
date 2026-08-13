@@ -28,6 +28,7 @@ import {
   listFeedback,
   feedbackStats,
   latestFeedback,
+  feedbackById,
 } from '../store/feedbackStore.js';
 
 const MAX_FILE_MB = 10;
@@ -52,6 +53,12 @@ function fmtInt(v) {
 }
 function siteLabel(s) {
   return s === 'AE' ? '中东站 AE' : s === 'SA' ? '沙特站 SA' : s;
+}
+function adTypeLabel(t) {
+  if (t === 'SP') return 'SP广告';
+  if (t === 'SB') return 'SB广告';
+  if (t === 'SD') return 'SD广告';
+  return t ? `${t}广告` : '—';
 }
 function todayStr() {
   const d = new Date();
@@ -79,6 +86,10 @@ function rangeLabel() {
   if (viewRange === '7d') return '近7天';
   if (viewRange === '30d') return '近30天';
   return '自定义区间';
+}
+/** 数据粒度文案 */
+function granularityText(g) {
+  return { keyword: '关键词级', campaign: '广告活动级', site: '站点级汇总', mixed: '混合', none: '无' }[g] || '站点级汇总';
 }
 /** ACOS 健康度配色 */
 function acosHealth(acos, hasSales) {
@@ -303,7 +314,15 @@ function renderDashboard(ranged, imports, start, end, daily, sites, diag) {
     })
     .join('');
 
-  // 明细表
+  // 明细表（含关键词级字段时补充列）
+  const hasKw = ranged.some((r) => r.keyword);
+  const kwHead = hasKw ? `<th>关键词</th><th>广告类型</th><th class="num">出价</th>` : '';
+  const kwRow = (r) =>
+    hasKw
+      ? `<td>${esc(r.keyword || '—')}</td><td>${esc(r.adType ? adTypeLabel(r.adType) : '—')}</td><td class="num">${
+          r.bid ? fmtNum(r.bid) : '—'
+        }</td>`
+      : '';
   const tableRows = ranged
     .slice()
     .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : a.site.localeCompare(b.site)))
@@ -312,6 +331,7 @@ function renderDashboard(ranged, imports, start, end, daily, sites, diag) {
       <tr data-date="${esc(r.date)}">
         <td>${esc(r.date)}</td>
         <td>${esc(siteLabel(r.site))}</td>
+        ${kwRow(r)}
         <td class="num">${fmtNum(r.cost)}</td>
         <td class="num">${fmtNum(r.sales)}</td>
         <td class="num">${fmtInt(r.impressions)}</td>
@@ -368,10 +388,10 @@ function renderDashboard(ranged, imports, start, end, daily, sites, diag) {
         <div class="table-scroll ads-detail" style="max-height:520px">
           <table class="data-table">
             <thead>
-              <tr><th>日期</th><th>站点</th><th class="num">花费</th><th class="num">销售额</th><th class="num">曝光</th><th class="num">点击</th><th class="num">订单</th></tr>
+              <tr><th>日期</th><th>站点</th>${kwHead}<th class="num">花费</th><th class="num">销售额</th><th class="num">曝光</th><th class="num">点击</th><th class="num">订单</th></tr>
             </thead>
-            <tbody>${tableRows || '<tr><td colspan="7" style="text-align:center;color:var(--text-sub)">该时间范围内暂无数据</td></tr>'}          </tbody>
-        </table>
+            <tbody>${tableRows || `<tr><td colspan="${hasKw ? 10 : 7}" style="text-align:center;color:var(--text-sub)">该时间范围内暂无数据</td></tr>`}</tbody>
+          </table>
         </div>
       </div>
     </div>
@@ -476,7 +496,9 @@ function renderDiagnosis(diag) {
       </div>
     </div>`;
   const sub = n
-    ? `<div class="diag-sub">基于${rangeLabel()}数据自动生成 · 共 ${n} 条建议（按优先级排序）</div>`
+    ? `<div class="diag-sub">基于${rangeLabel()}数据自动生成 · 共 ${n} 条建议（按优先级排序）· 数据粒度：${granularityText(
+        diag.dataGranularity
+      )}</div>`
     : '';
   const body =
     n === 0
@@ -491,8 +513,9 @@ function renderDiagCard(sug) {
     mid: { cls: 'mid', icon: '🟡', label: '中优先级' },
     low: { cls: 'low', icon: '🟢', label: '低优先级' },
   }[sug.priority];
+  const dataRows = sug.dataSupport.map((d) => `<li>${esc(d)}</li>`).join('');
   const points = sug.points.map((p) => `<li>${esc(p)}</li>`).join('');
-  const fb = latestFeedback(sug.site, sug.ruleKey);
+  const fb = feedbackById(sug.id);
   const actions = fb
     ? `<div class="diag-resolved ${fb.feedback === 'accept' ? 'ok' : 'no'}">${
         fb.feedback === 'accept' ? '✅ 已采纳' : '❌ 已忽略'
@@ -507,10 +530,26 @@ function renderDiagCard(sug) {
         <span class="diag-prio prio-${prioCfg.cls}">${prioCfg.icon} ${prioCfg.label}</span>
         <span class="diag-site">${esc(sug.siteLabel)}</span>
       </div>
+      <div class="diag-object">📍 ${esc(sug.objectLabel)}</div>
       <div class="diag-issue">${esc(sug.problem)}</div>
-      <div class="diag-advice"><span class="diag-advice-label">💡 建议：</span>
+
+      <div class="diag-block">
+        <div class="diag-block-title">📊 数据支撑</div>
+        <ul class="diag-data">${dataRows || '<li>—</li>'}</ul>
+      </div>
+      <div class="diag-block">
+        <div class="diag-block-title">💰 影响量化</div>
+        <div class="diag-impact">${esc(sug.impact)}</div>
+      </div>
+      <div class="diag-block">
+        <div class="diag-block-title">🎯 可执行操作</div>
         <ol class="diag-points">${points}</ol>
       </div>
+      <div class="diag-block">
+        <div class="diag-block-title">📈 预期效果</div>
+        <div class="diag-expected">${esc(sug.expected)}</div>
+      </div>
+      ${sug.granularityNote ? `<div class="diag-note">💡 ${esc(sug.granularityNote)}</div>` : ''}
       ${actions}
     </div>`;
 }
@@ -817,6 +856,7 @@ function openImportModal(rerender) {
 function exportData(records) {
   if (!records.length) return;
   const hasTotal = records.some((r) => r.totalSales > 0);
+  const hasKw = records.some((r) => r.keyword);
   const rows = records.map((r) => {
     const row = {
       日期: r.date,
@@ -827,6 +867,13 @@ function exportData(records) {
       点击: r.clicks,
       订单: r.orders,
     };
+    if (hasKw) {
+      row['关键词'] = r.keyword || '';
+      row['广告类型'] = r.adType || '';
+      row['广告活动'] = r.campaign || '';
+      row['出价'] = r.bid || '';
+      row['建议竞价'] = r.suggestedBidText || (r.suggestedBid || '');
+    }
     if (hasTotal) {
       row['总销售额'] = r.totalSales || 0;
       row['广告占比'] = r.totalSales > 0 ? `${((r.sales / r.totalSales) * 100).toFixed(1)}%` : '';

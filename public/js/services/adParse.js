@@ -13,9 +13,16 @@ export const FIELD_DEFS = [
   { key: 'impressions', label: '曝光', required: true, keywords: ['曝光', 'impression', 'imp', '展示', '曝光量', 'impr'] },
   { key: 'clicks', label: '点击', required: true, keywords: ['点击', 'click', 'clicks', '点击量'] },
   { key: 'orders', label: '订单', required: true, keywords: ['订单', 'order', 'orders', '转化数', '订单量'] },
+  // —— 关键词级 / 活动级可选字段（用于精细化诊断；缺省时自动降级为站点级汇总诊断）——
+  { key: 'keyword', label: '关键词', required: false, keywords: ['关键词', 'keyword', 'searchterm', 'search term', '客户搜索词', '查询词', '词', '搜索词'] },
+  { key: 'adType', label: '广告类型', required: false, keywords: ['广告类型', '类型', 'adtype', 'campaigntype', '广告组合类型', '推广类型'] },
+  { key: 'campaign', label: '广告活动', required: false, keywords: ['广告活动', 'campaign', '广告活动名称', '活动', '推广活动', '广告组'] },
+  { key: 'asin', label: 'ASIN', required: false, keywords: ['asin', 'ASIN', '子asin', '商品', '子体'] },
+  { key: 'bid', label: '出价', required: false, keywords: ['出价', '竞价', 'bid', '默认竞价', '关键词出价'] },
+  { key: 'suggestedBid', label: '建议竞价', required: false, keywords: ['建议竞价', '建议出价', 'suggestedbid', '建议竞价范围', '建议竞价下限', '建议出价范围'] },
 ];
 
-const NUMERIC_KEYS = ['cost', 'sales', 'impressions', 'clicks', 'orders'];
+const NUMERIC_KEYS = ['cost', 'sales', 'impressions', 'clicks', 'orders', 'bid', 'suggestedBid'];
 
 function normHeader(s) {
   return String(s ?? '')
@@ -75,6 +82,23 @@ export function coerceNumber(v) {
   return Number.isNaN(n) ? 0 : n;
 }
 
+/** 从可能带单位的字符串中取第一个数值（用于「建议竞价 $0.50 - $0.80」取下限 0.50） */
+export function firstNum(v) {
+  if (v === null || v === undefined) return 0;
+  const m = String(v).match(/-?\d+(\.\d+)?/);
+  return m ? parseFloat(m[0]) : 0;
+}
+
+/** 归一化广告类型：SP / SB / SD（兼容中文与英文） */
+export function normAdType(v) {
+  if (!v) return '';
+  const s = String(v).trim().toUpperCase();
+  if (s.includes('SP') || s.includes('商品推广') || s.includes('SPONSORED PRODUCTS')) return 'SP';
+  if (s.includes('SB') || s.includes('品牌推广') || s.includes('SPONSORED BRANDS')) return 'SB';
+  if (s.includes('SD') || s.includes('展示') || s.includes('SPONSORED DISPLAY')) return 'SD';
+  return s || '';
+}
+
 export function normalizeDate(v) {
   if (v === null || v === undefined) return '';
   let s = String(v).replace(/\//g, '-').trim();
@@ -108,8 +132,13 @@ export function buildRecords(rawRows, mapping, defaultSite, importId) {
     let site = mapping.site ? normalizeSite(get('site')) : '';
     if (!site) site = defaultSite && defaultSite !== 'ALL' ? defaultSite : '';
     if (!site) continue; // 无法确定站点的行跳过
+    const kw = String(get('keyword') || '').trim();
+    const camp = String(get('campaign') || '').trim();
+    const adType = normAdType(get('adType'));
+    const asin = String(get('asin') || '').trim();
+    const sugBidRaw = get('suggestedBid');
     const rec = {
-      id: `${site}|${date}`,
+      id: [site, date, kw && `k:${kw}`, camp && `c:${camp}`, adType && `t:${adType}`].filter(Boolean).join('|'),
       site,
       date,
       cost: coerceNumber(get('cost')),
@@ -118,6 +147,13 @@ export function buildRecords(rawRows, mapping, defaultSite, importId) {
       impressions: coerceNumber(get('impressions')),
       clicks: coerceNumber(get('clicks')),
       orders: coerceNumber(get('orders')),
+      keyword: kw,
+      adType,
+      campaign: camp,
+      asin,
+      bid: coerceNumber(get('bid')),
+      suggestedBid: firstNum(sugBidRaw),
+      suggestedBidText: sugBidRaw != null && sugBidRaw !== '' ? String(sugBidRaw) : '',
       importId,
       at: Date.now(),
     };

@@ -32,51 +32,27 @@ function homeDueText(due) {
 
 export function render(container, { navigate }) {
   const metrics = [
-    {
-      label: 'Listing 项目总数', value: countProjects(), icon: 'file', cls: 'primary',
-      sub: '已保存的 Listing 项目',
-    },
-    {
-      label: '今日生成', value: countGeneratedToday(), icon: 'sparkles', cls: 'green',
-      sub: '今日完成的 AI 生成',
-    },
-    {
-      label: '选品库产品', value: countProducts(), icon: 'box', cls: 'blue',
-      sub: '可导入工坊的产品',
-    },
-    {
-      label: 'AI 调用次数', value: aiCallsCount(), icon: 'zap', cls: 'amber',
-      sub: '累计 DeepSeek 调用',
-    },
+    { label: 'Listing 项目总数', value: countProjects(), sub: '已保存的 Listing 项目' },
+    { label: '今日生成', value: countGeneratedToday(), sub: '今日完成的 AI 生成' },
+    { label: '选品库产品', value: countProducts(), sub: '可导入工坊的产品' },
+    { label: 'AI 调用次数', value: aiCallsCount(), sub: '累计 DeepSeek 调用' },
   ];
-
-  const iconColors = {
-    primary: { bg: 'linear-gradient(135deg,var(--grad-p1),var(--grad-p2))', fg: 'var(--grad-pfg)' },
-    green: { bg: 'linear-gradient(135deg,var(--grad-g1),var(--grad-g2))', fg: 'var(--grad-gfg)' },
-    blue: { bg: 'linear-gradient(135deg,var(--grad-b1),var(--grad-b2))', fg: 'var(--grad-bfg)' },
-    amber: { bg: 'linear-gradient(135deg,var(--grad-a1),var(--grad-a2))', fg: 'var(--grad-afg)' },
-  };
 
   container.innerHTML = `
     <!-- 指标卡组：固定高度，不随页面滚动 -->
     <div class="metrics-row" data-metrics>
-      ${metrics.map((m, i) => {
-        const c = iconColors[m.cls];
-        return `
+      ${metrics.map((m, i) => `
         <div class="metric-card">
-          <div class="metric-icon" style="background:${c.bg};color:${c.fg}">${icon(m.icon)}</div>
           <div class="metric-body">
             <div class="metric-value" data-metric="${i}">${m.value}</div>
             <div class="metric-label">${m.label}</div>
             <div class="metric-trend">${m.sub}</div>
           </div>
-        </div>`;
-      }).join('')}
+        </div>`).join('')}
     </div>
 
     <div class="home-quick-grid">
       <div class="card home-quick" data-nav="listing">
-        <div class="hq-icon" style="background:linear-gradient(135deg,var(--grad-p1),var(--grad-p2));color:var(--grad-pfg)">${icon('sparkles')}</div>
         <div>
           <div class="hq-title">创建 AI Listing</div>
           <div class="hq-sub">填写产品信息，AI 生成标题、五点、描述与关键词</div>
@@ -84,7 +60,6 @@ export function render(container, { navigate }) {
         <span class="hq-arrow">→</span>
       </div>
       <div class="card home-quick" data-nav="library">
-        <div class="hq-icon" style="background:linear-gradient(135deg,var(--grad-b1),var(--grad-b2));color:var(--grad-bfg)">${icon('box')}</div>
         <div>
           <div class="hq-title">选品库</div>
           <div class="hq-sub">管理产品素材，一键导入 Listing 工坊</div>

@@ -877,7 +877,7 @@ function openProductModal(existing, onDone) {
           const isSel = sel === t.id;
           return `
           <div class="tier-card tier-${t.color} ${isSel ? 'selected' : ''}" data-tier="${t.id}">
-            <div class="tier-head"><span class="tier-dot"></span>${t.label}</div>
+            <div class="tier-head">${t.label}</div>
             <div class="tier-margin-sub">利润率 ${Math.round(t.margin * 100)}%</div>
             ${tv ? `<div class="tier-price">${sym}${tv.displayPrice.toFixed(2)}</div>
               <div class="tier-profit">利润 ${sym}${tv.displayProfit.toFixed(2)}</div>

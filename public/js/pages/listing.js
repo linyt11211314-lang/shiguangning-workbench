@@ -110,32 +110,22 @@ function renderList(container, { navigate, rerender }) {
   }).length;
 
   const metrics = [
-    { label: 'Listing 项目', value: projects.length, icon: 'file', cls: 'primary', sub: '全部项目' },
-    { label: '已生成', value: generatedCount, icon: 'sparkles', cls: 'green', sub: 'AI 已完成生成' },
-    { label: '今日创建', value: todayCount, icon: 'calendar', cls: 'blue', sub: '今天新建的项目' },
-    { label: 'AI 服务', value: hasApiKey() ? '就绪' : '未配置', icon: 'zap', cls: hasApiKey() ? 'green' : 'amber', sub: hasApiKey() ? `Key ${maskedKey(getSettings().apiKey)}` : '前往设置配置 Key' },
+    { label: 'Listing 项目', value: projects.length, sub: '全部项目' },
+    { label: '已生成', value: generatedCount, sub: 'AI 已完成生成' },
+    { label: '今日创建', value: todayCount, sub: '今天新建的项目' },
+    { label: 'AI 服务', value: hasApiKey() ? '就绪' : '未配置', sub: hasApiKey() ? `Key ${maskedKey(getSettings().apiKey)}` : '前往设置配置 Key' },
   ];
-  const iconColors = {
-    primary: { bg: 'linear-gradient(135deg,var(--grad-p1),var(--grad-p2))', fg: 'var(--grad-pfg)' },
-    green: { bg: 'linear-gradient(135deg,var(--grad-g1),var(--grad-g2))', fg: 'var(--grad-gfg)' },
-    blue: { bg: 'linear-gradient(135deg,var(--grad-b1),var(--grad-b2))', fg: 'var(--grad-bfg)' },
-    amber: { bg: 'linear-gradient(135deg,var(--grad-a1),var(--grad-a2))', fg: 'var(--grad-afg)' },
-  };
 
   container.innerHTML = `
     <div class="metrics-row" data-metrics>
-      ${metrics.map((m) => {
-        const c = iconColors[m.cls];
-        return `
+      ${metrics.map((m) => `
         <div class="metric-card">
-          <div class="metric-icon" style="background:${c.bg};color:${c.fg}">${icon(m.icon)}</div>
           <div class="metric-body">
             <div class="metric-value">${m.value}</div>
             <div class="metric-label">${m.label}</div>
             <div class="metric-trend">${esc(m.sub)}</div>
           </div>
-        </div>`;
-      }).join('')}
+        </div>`).join('')}
     </div>
 
     <div class="card" style="padding:14px 18px;margin-bottom:18px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">

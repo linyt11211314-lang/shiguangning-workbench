@@ -281,7 +281,6 @@ export function render(container, { navigate, rerender }) {
     <div class="comm-page-header">
       <div>
         <div class="comm-page-kicker">COMMISSION & SALARY PLAN</div>
-        <div class="comm-page-sub">按昨天以前的完整数据推算提成，再把工资安排得明明白白。</div>
       </div>
       <div class="comm-header-actions">
         <div class="comm-status comm-status--saved" id="comm-status">🟢 本地已保存</div>

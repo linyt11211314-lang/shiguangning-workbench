@@ -393,6 +393,35 @@ html, body {
 .card-title { font-size: 16px; font-weight: 700; }
 .card-sub { font-size: 13px; color: var(--text-sub); margin-top: 3px; }
 
+/* ===== 全局统一：指标卡 / 关键数据卡 pastel 渐变（与「我的提成预估」同款调性） =====
+   仅作用于浅色模式；深色模式自动回退到下方原有定义，不破坏可读性。
+   承载表单/列表的白底卡（.card / .card-pad）保持白底，遵循同页原则。 */
+:root:not([data-mode="dark"]) .metric-card,
+:root:not([data-mode="dark"]) .home-quick { border-color: transparent; box-shadow: var(--shadow-card); }
+
+/* 指标卡：按位置分配 4 色（青柠绿 / 天空蓝 / 暖橙 / 蜜桃粉） */
+:root:not([data-mode="dark"]) .metrics-row .metric-card:nth-child(1) { background: linear-gradient(135deg, var(--comm-lime-1), var(--comm-lime-2)); color: var(--comm-lime-fg); }
+:root:not([data-mode="dark"]) .metrics-row .metric-card:nth-child(2) { background: linear-gradient(135deg, var(--comm-blue-1), var(--comm-blue-2)); color: var(--comm-blue-fg); }
+:root:not([data-mode="dark"]) .metrics-row .metric-card:nth-child(3) { background: linear-gradient(135deg, var(--comm-orange-1), var(--comm-orange-2)); color: var(--comm-orange-fg); }
+:root:not([data-mode="dark"]) .metrics-row .metric-card:nth-child(4) { background: linear-gradient(135deg, var(--comm-pink-1), var(--comm-pink-2)); color: var(--comm-pink-fg); }
+:root:not([data-mode="dark"]) .metric-card .metric-label { color: inherit; opacity: .82; }
+:root:not([data-mode="dark"]) .metric-card .metric-trend { color: inherit; opacity: .72; }
+
+/* 三档报价卡：按 color 类分配（green→青柠绿 / amber→暖橙 / red→蜜桃粉） */
+:root:not([data-mode="dark"]) .tier-card.tier-green { background: linear-gradient(135deg, var(--comm-lime-1), var(--comm-lime-2)); color: var(--comm-lime-fg); }
+:root:not([data-mode="dark"]) .tier-card.tier-amber { background: linear-gradient(135deg, var(--comm-orange-1), var(--comm-orange-2)); color: var(--comm-orange-fg); }
+:root:not([data-mode="dark"]) .tier-card.tier-red { background: linear-gradient(135deg, var(--comm-pink-1), var(--comm-pink-2)); color: var(--comm-pink-fg); }
+:root:not([data-mode="dark"]) .tier-card .tier-margin-sub,
+:root:not([data-mode="dark"]) .tier-card .tier-profit,
+:root:not([data-mode="dark"]) .tier-card .tier-margin2 { color: inherit; opacity: .82; }
+:root:not([data-mode="dark"]) .tier-card .tier-price { color: inherit; }
+
+/* 首页快捷入口卡：2 色渐变 */
+:root:not([data-mode="dark"]) .home-quick-grid .home-quick:nth-child(1) { background: linear-gradient(135deg, var(--comm-blue-1), var(--comm-blue-2)); color: var(--comm-blue-fg); }
+:root:not([data-mode="dark"]) .home-quick-grid .home-quick:nth-child(2) { background: linear-gradient(135deg, var(--comm-lime-1), var(--comm-lime-2)); color: var(--comm-lime-fg); }
+:root:not([data-mode="dark"]) .home-quick .hq-sub { color: inherit; opacity: .78; }
+:root:not([data-mode="dark"]) .home-quick .hq-arrow { color: inherit; opacity: .6; }
+
 .section-head { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
 .section-head .section-title { font-size: 15.5px; font-weight: 700; }
 .section-head .section-sub { font-size: 12.5px; color: var(--text-sub); }

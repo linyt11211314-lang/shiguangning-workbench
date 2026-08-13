@@ -5,8 +5,30 @@ import { icon } from '../ui/icons.js';
 import { esc, timeAgo } from '../utils.js';
 import { countProjects, countGeneratedToday, listProjects } from '../store/projectStore.js';
 import { countProducts } from '../store/productStore.js';
+import { listPendingWithDue, updateTaskTracked } from '../store/scheduleStore.js';
 import { aiCallsCount } from '../store/statsStore.js';
 import { hasApiKey } from '../store/settingsStore.js';
+import { toastSuccess } from '../ui/toast.js';
+
+function homeTodayStr() {
+  const d = new Date();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${d.getFullYear()}-${m}-${day}`;
+}
+function homeIsOverdue(due) {
+  return !!due && due < homeTodayStr();
+}
+function homeDueText(due) {
+  if (!due) return '';
+  const t = homeTodayStr();
+  if (due === t) return '今天';
+  const diff = Math.round((new Date(`${due}T00:00:00`) - new Date(`${t}T00:00:00`)) / 86400000);
+  if (diff === 1) return '明天';
+  if (diff < 0) return `逾期${-diff}天`;
+  const [, mo, da] = due.split('-').map(Number);
+  return `${mo}/${da}`;
+}
 
 export function render(container, { navigate }) {
   const metrics = [
@@ -74,6 +96,18 @@ export function render(container, { navigate }) {
     <div class="card" style="margin-bottom:20px">
       <div class="card-pad">
         <div class="section-head" style="margin-bottom:6px">
+          <div class="section-title">待办事项</div>
+          <span class="section-sub">来自日程计划 · 有计划日期且未完成</span>
+          <span class="flex-1"></span>
+          <button class="btn btn-soft btn-sm" data-nav="schedule">全部日程</button>
+        </div>
+        <div data-todos></div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom:20px">
+      <div class="card-pad">
+        <div class="section-head" style="margin-bottom:6px">
           <div class="section-title">最近项目</div>
           <span class="section-sub">${hasApiKey() ? 'AI 服务已就绪' : '尚未配置 AI 服务，请前往设置'}</span>
           <span class="flex-1"></span>
@@ -121,7 +155,41 @@ export function render(container, { navigate }) {
     }).join('');
   }
 
+  // 待办事项（来自日程计划：有计划日期且未完成，按时间升序）
+  const todosBox = container.querySelector('[data-todos]');
+  const todos = listPendingWithDue().slice(0, 6);
+  if (!todos.length) {
+    todosBox.innerHTML = `
+      <div class="empty-state" style="padding:18px 14px">
+        <div class="empty-sub">暂无待办，已完成或没填计划日期的不显示在这里。</div>
+        <div class="mt-12"><button class="btn btn-soft btn-sm" data-nav="schedule">去日程计划添加</button></div>
+      </div>`;
+  } else {
+    todosBox.innerHTML = todos.map((t) => {
+      const ov = homeIsOverdue(t.dueDate);
+      return `
+      <div class="todo-item ${ov ? 'overdue' : ''}" data-todo="${t.id}" title="点击一键完成">
+        <button class="todo-check" data-done>○</button>
+        <div class="flex-1" style="min-width:0">
+          <div class="todo-title">${esc(t.title)}</div>
+          <div class="todo-due ${ov ? 'todo-due-over' : ''}">📅 ${homeDueText(t.dueDate)}</div>
+        </div>
+        <span class="hq-arrow" style="color:var(--text-faint)">→</span>
+      </div>`;
+    }).join('');
+  }
+
   // 事件
+  todosBox.addEventListener('click', (e) => {
+    const el = e.target.closest('[data-todo]');
+    if (!el) return;
+    const id = el.dataset.todo;
+    const t = listPendingWithDue().find((x) => x.id === id);
+    if (!t) return;
+    updateTaskTracked(id, { done: true });
+    toastSuccess(`已完成：${t.title}`);
+  });
+
   container.querySelectorAll('[data-nav]').forEach((el) => {
     el.addEventListener('click', () => navigate(el.dataset.nav));
   });

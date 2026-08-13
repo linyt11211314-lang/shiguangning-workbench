@@ -1304,3 +1304,66 @@ html, body {
   .site-flow { flex-direction: column; align-items: flex-start; }
   .sf-arrow { display: none; }
 }
+
+/* ---------- 日程计划 / 首页待办 ---------- */
+.task-add { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.task-add .input { flex: 1 1 240px; min-width: 0; }
+.task-add .task-date { flex: 0 0 auto; width: 175px; }
+
+.task-group-label { font-size: 12px; font-weight: 700; color: var(--text-faint); margin: 14px 2px 8px; letter-spacing: .3px; }
+.task-group-label:first-child { margin-top: 2px; }
+
+.task-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 12px; border: 1px solid var(--border); border-radius: 12px;
+  margin-bottom: 8px; background: var(--card);
+}
+.task-item.done { opacity: .55; background: var(--card-soft); }
+.task-item.overdue { border-color: #f3c2c2; }
+
+.task-check {
+  flex-shrink: 0; width: 22px; height: 22px; border-radius: 50%;
+  border: 2px solid var(--primary); background: transparent; color: #fff;
+  font-size: 13px; line-height: 1; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: background .12s ease;
+}
+.task-check:hover { background: var(--primary-soft); }
+.task-item.done .task-check { background: var(--green); border-color: var(--green); }
+
+.task-title { font-size: 14px; font-weight: 600; color: var(--text); line-height: 1.4; }
+.task-title-done { text-decoration: line-through; color: var(--text-sub); }
+.task-meta { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 3px; font-size: 12px; color: var(--text-sub); }
+.task-due { color: var(--text-sub); }
+.task-due-over { color: var(--red); font-weight: 600; }
+.task-due-none { color: var(--text-faint); }
+.task-note { color: var(--text-faint); }
+
+.task-act {
+  flex-shrink: 0; width: 30px; height: 30px; border-radius: 8px;
+  border: 1px solid var(--border); background: var(--card); color: var(--text-sub);
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+}
+.task-act:hover { background: var(--hover-bg); color: var(--text); }
+.task-act svg { width: 15px; height: 15px; }
+.task-del:hover { color: var(--red); border-color: #f3c2c2; background: #fdeaea; }
+
+/* 首页待办 */
+.todo-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 12px; border: 1px solid var(--border); border-radius: 12px;
+  margin-bottom: 8px; background: var(--card); cursor: pointer;
+  transition: background .12s ease, border-color .12s ease;
+}
+.todo-item:hover { background: var(--hover-bg); border-color: #bfe3cd; }
+.todo-item.overdue { border-color: #f3c2c2; }
+.todo-check {
+  flex-shrink: 0; width: 22px; height: 22px; border-radius: 50%;
+  border: 2px solid var(--primary); background: transparent; color: var(--primary);
+  font-size: 14px; line-height: 1; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+}
+.todo-title { font-size: 14px; font-weight: 600; color: var(--text); line-height: 1.4; }
+.todo-due { font-size: 12px; color: var(--text-sub); margin-top: 2px; }
+.todo-due-over { color: var(--red); font-weight: 600; }
+

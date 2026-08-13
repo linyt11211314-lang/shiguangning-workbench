@@ -99,6 +99,7 @@ export const STORAGE_KEYS = {
   PRODUCTS: 'sgn.products',
   PROJECTS: 'sgn.listingProjects',
   STATS: 'sgn.stats',
+  SCHEDULE: 'sgn.schedules',
 };
 
 /** 生成阶段（进度展示用） */

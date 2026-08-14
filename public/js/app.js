@@ -17,12 +17,11 @@ import { render as renderSchedule } from './pages/schedule.js';
 import { render as renderAds } from './pages/ads.js';
 
 const NAV = [
-  { id: 'home', label: '首页', icon: 'home' },
   { id: 'library', label: '选品库', icon: 'box' },
   { id: 'listing', label: 'AI Listing 工坊', icon: 'sparkles' },
+  { id: 'ads', label: '广告诊断', icon: 'target' },
   { id: 'commission', label: '我的提成预估', icon: 'chart' },
   { id: 'schedule', label: '日程计划', icon: 'calendar' },
-  { id: 'ads', label: '广告诊断', icon: 'target' },
   { id: 'settings', label: '设置', icon: 'settings' },
 ];
 
@@ -36,7 +35,7 @@ const TITLES = {
   settings: { title: '设置', sub: '外观、AI 服务与偏好' },
 };
 
-let currentRoute = 'home';
+let currentRoute = 'library';
 const ROUTE_KEY = 'sgn.route';
 
 function pageOf(route) {

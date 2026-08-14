@@ -135,6 +135,9 @@ function buildSuggestion(o) {
     expected: o.expected || '',
     trigger: o.trigger || '',
     granularityNote: o.granularityNote || null,
+    // 结构化操作目标（用于「领星可粘贴的批量操作清单」导出）
+    target: o.target || null,
+    pauseAction: !!o.pauseAction,
   };
 }
 
@@ -146,6 +149,15 @@ function objectSuggestions(site, m, ctx) {
   const adLabel = adTypeLabel(m.adType);
   const objLabel = `${adLabel} · ${kindName}：${m.key}`;
   const rl = ctx.rangeLabel;
+  // 结构化操作目标：供「领星可粘贴批量操作清单」导出（暂停/否定等以 target 为锚点）
+  const target = {
+    site,
+    keyword: m.keyword || '',
+    campaign: m.campaign || '',
+    adType: m.adType || '',
+    kind,
+    adTypeLabel: adTypeLabel(m.adType),
+  };
   const shareTxt = m.share != null ? ` （占该活动总花费 ${m.share.toFixed(0)}%）` : '';
   const bidTxt =
     m.bid > 0 || m.suggestedBid > 0
@@ -166,6 +178,8 @@ function objectSuggestions(site, m, ctx) {
         ruleKey: 'high_spend_no_conv',
         priority: high ? 'high' : 'mid',
         objectLabel: objLabel,
+        target,
+        pauseAction: true,
         problem: `${kindName}「${m.key}」高花费无转化（花费 ¥${fmtMoney(m.cost)} · ${m.orders} 单）`,
         dataSupport: [
           `花费：¥${fmtMoney(m.cost)}${shareTxt}`,
@@ -200,6 +214,7 @@ function objectSuggestions(site, m, ctx) {
         ruleKey: 'acos_high',
         priority: 'high',
         objectLabel: objLabel,
+        target,
         problem: `${kindName}「${m.key}」ACOS 偏高（${m.acos.toFixed(1)}%，超出健康线 ${ACOS_HEALTHY}%）`,
         dataSupport: [
           `花费：¥${fmtMoney(m.cost)}`,
@@ -230,6 +245,7 @@ function objectSuggestions(site, m, ctx) {
         ruleKey: 'acos_good',
         priority: 'low',
         objectLabel: objLabel,
+        target,
         problem: `${kindName}「${m.key}」ACOS 表现优秀（${m.acos.toFixed(1)}%）`,
         dataSupport: [
           `花费：¥${fmtMoney(m.cost)}`,
@@ -260,6 +276,7 @@ function objectSuggestions(site, m, ctx) {
         ruleKey: 'bid_low',
         priority: 'mid',
         objectLabel: objLabel,
+        target,
         problem: `${kindName}「${m.key}」出价 $${fmtMoney(m.bid)} 低于建议竞价 $${fmtMoney(m.suggestedBid)}`,
         dataSupport: [
           `当前出价：$${fmtMoney(m.bid)}`,
@@ -293,6 +310,7 @@ function objectSuggestions(site, m, ctx) {
         ruleKey: 'ctr_low',
         priority: 'mid',
         objectLabel: objLabel,
+        target,
         problem: `${kindName}「${m.key}」点击率偏低（${m.ctr.toFixed(2)}%）`,
         dataSupport: [`CTR：${m.ctr.toFixed(2)}%`, `曝光：${m.impressions} 次`, `点击：${m.clicks} 次`],
         impact: `低 CTR 拉低广告质量得分，近${rl} ${m.clicks} 次点击的引流效率有限`,
@@ -317,6 +335,7 @@ function objectSuggestions(site, m, ctx) {
         ruleKey: 'imp_low',
         priority: 'low',
         objectLabel: objLabel,
+        target,
         problem: `${kindName}「${m.key}」曝光量偏低（${m.impressions} 次）`,
         dataSupport: [`曝光：${m.impressions} 次`, `花费：¥${fmtMoney(m.cost)}`, `点击：${m.clicks} 次`],
         impact: `曝光不足导致该${kindName}几乎无法触达买家，近${rl}仅 ${m.impressions} 次曝光`,
@@ -342,6 +361,7 @@ function objectSuggestions(site, m, ctx) {
         ruleKey: 'conv_low',
         priority: 'mid',
         objectLabel: objLabel,
+        target,
         problem: `${kindName}「${m.key}」转化率偏低（${m.convRate.toFixed(1)}%，约 ${m.orders} 单 / ${m.clicks} 点击）`,
         dataSupport: [
           `转化率：${m.convRate.toFixed(1)}%`,
@@ -676,4 +696,55 @@ export function suggestionToText(sug) {
   ];
   if (sug.granularityNote) parts.push('提示：' + sug.granularityNote);
   return parts.join('\n');
+}
+
+/**
+ * 汇总所有「可批量暂停」的关键词级建议，生成领星后台可粘贴的操作清单。
+ * 仅包含 ruleKey=high_spend_no_conv（明确建议「立即暂停关键词」）且为关键词级的对象。
+ * @param {Array} suggestions diagnose() 的返回列表
+ * @returns {Array<{site,siteLabel,campaign,keyword,adType,adTypeLabel}>}
+ */
+export function buildPauseList(suggestions = []) {
+  const seen = new Set();
+  const rows = [];
+  for (const s of suggestions) {
+    if (!s.pauseAction || !s.target || s.target.kind !== 'keyword') continue;
+    const t = s.target;
+    const key = `${t.site}|${t.campaign}|${t.keyword}|${t.adType}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    rows.push({
+      site: t.site,
+      siteLabel: siteLabel(t.site),
+      campaign: t.campaign || '未命名活动',
+      keyword: t.keyword || '未命名关键词',
+      adType: t.adType || '',
+      adTypeLabel: t.adTypeLabel || adTypeLabel(t.adType),
+    });
+  }
+  rows.sort((a, b) =>
+    (a.site + a.campaign + a.keyword).localeCompare(b.site + b.campaign + b.keyword, 'zh')
+  );
+  return rows;
+}
+
+function csvCell(v) {
+  const s = String(v == null ? '' : v);
+  return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+
+/** 生成 CSV（领星 / 亚马逊批量模板友好，UTF-8 with BOM 便于 Excel 打开） */
+export function pauseListToCSV(rows = []) {
+  const header = ['站点', '广告活动', '关键词', '广告类型', '建议操作'];
+  const lines = rows.map((r) =>
+    [r.siteLabel, r.campaign, r.keyword, r.adTypeLabel, '暂停'].map(csvCell).join(',')
+  );
+  return '﻿' + [header.join(','), ...lines].join('\r\n');
+}
+
+/** 生成 TSV（每行：关键词<TAB>活动<TAB>类型<TAB>站点，便于直接粘贴进领星表格/批量框） */
+export function pauseListToText(rows = []) {
+  return rows
+    .map((r) => [r.keyword, r.campaign, r.adTypeLabel, r.siteLabel].join('\t'))
+    .join('\n');
 }

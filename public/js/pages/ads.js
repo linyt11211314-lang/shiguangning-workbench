@@ -4,7 +4,7 @@
  * 第二阶段：数据看板与趋势展示（概览 / 趋势折线图 / AE·SA 双站点对比 / 明细表联动）
  */
 import { icon } from '../ui/icons.js';
-import { esc } from '../utils.js';
+import { esc, copyText } from '../utils.js';
 import { toastSuccess, toastError, toastInfo } from '../ui/toast.js';
 import { confirmDialog, openModal } from '../ui/modal.js';
 import { renderLineChart } from '../ui/lineChart.js';
@@ -22,7 +22,7 @@ import {
   buildRecords,
   validateMapping,
 } from '../services/adParse.js';
-import { diagnose, suggestionToText } from '../services/diagnose.js';
+import { diagnose, suggestionToText, buildPauseList, pauseListToCSV, pauseListToText } from '../services/diagnose.js';
 import {
   addFeedback,
   listFeedback,
@@ -487,11 +487,19 @@ function renderDiagnosis(diag) {
     </div>`;
   }
   const n = diag.suggestions.length;
+  const pauseRows = buildPauseList(diag.suggestions);
+  const pauseBtn =
+    pauseRows.length > 0
+      ? `<button class="btn btn-danger-soft btn-sm" data-diag-pause title="导出可粘贴到领星后台批量暂停的关键词清单">${icon(
+          'copy'
+        )} 批量暂停清单（${pauseRows.length}）</button>`
+      : '';
   const header = `
     <div class="section-head" style="margin-bottom:10px">
       <div class="section-title">🧠 诊断建议</div>
       <div class="diag-actions-top">
         <button class="btn btn-soft btn-sm" data-diag-refresh>${icon('refresh')} 刷新诊断</button>
+        ${pauseBtn}
         <button class="btn btn-ghost btn-sm" data-diag-stats>${icon('chart')} 反馈统计</button>
       </div>
     </div>`;
@@ -516,6 +524,9 @@ function renderDiagCard(sug) {
   const dataRows = sug.dataSupport.map((d) => `<li>${esc(d)}</li>`).join('');
   const points = sug.points.map((p) => `<li>${esc(p)}</li>`).join('');
   const fb = feedbackById(sug.id);
+  const copyKwBtn = sug.pauseAction
+    ? `<button class="btn btn-ghost btn-sm" data-copy-kw="${esc(sug.id)}">${icon('copy')} 复制关键词</button>`
+    : '';
   const actions = fb
     ? `<div class="diag-resolved ${fb.feedback === 'accept' ? 'ok' : 'no'}">${
         fb.feedback === 'accept' ? '✅ 已采纳' : '❌ 已忽略'
@@ -523,6 +534,7 @@ function renderDiagCard(sug) {
     : `<div class="diag-card-actions">
         <button class="btn btn-soft btn-sm" data-accept="${esc(sug.id)}">👍 采纳</button>
         <button class="btn btn-ghost btn-sm" data-ignore="${esc(sug.id)}">👎 忽略</button>
+        ${copyKwBtn}
       </div>`;
   return `
     <div class="diag-card diag-${prioCfg.cls}">
@@ -584,6 +596,36 @@ function wireDiagnosis(container, rerender) {
   // 反馈统计入口（面板头部 / 底部 footer 共用）
   container.querySelectorAll('[data-diag-stats]').forEach((btn) => {
     btn.addEventListener('click', () => openFeedbackModal(rerender));
+  });
+
+  // 批量暂停清单（领星可粘贴）
+  const pauseBtn = container.querySelector('[data-diag-pause]');
+  if (pauseBtn) {
+    pauseBtn.addEventListener('click', () => {
+      const rows = buildPauseList(currentSuggestions);
+      if (!rows.length) {
+        toastInfo('暂无可批量暂停的关键词（需导入关键词级报表）');
+        return;
+      }
+      openPauseListModal(rows);
+    });
+  }
+
+  // 单条：复制关键词
+  container.querySelectorAll('[data-copy-kw]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const sug = currentSuggestions.find((s) => s.id === btn.dataset.copyKw);
+      if (!sug || !sug.target) return;
+      const row = {
+        siteLabel: siteLabelOf(sug.target.site),
+        campaign: sug.target.campaign || '未命名活动',
+        keyword: sug.target.keyword || '未命名关键词',
+        adTypeLabel: sug.target.adTypeLabel || sug.target.adType || '',
+      };
+      const ok = await copyText(pauseListToText([row]));
+      if (ok) toastSuccess(`已复制关键词：${row.keyword}`);
+      else toastError('复制失败，请手动框选复制');
+    });
   });
 
   // 采纳 / 忽略
@@ -692,6 +734,62 @@ function openFeedbackModal(rerender) {
       if (row) row.hidden = !row.hidden;
     });
   });
+}
+
+function downloadPauseCSV(rows) {
+  const csv = pauseListToCSV(rows);
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `领星批量暂停清单_${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function siteLabelOf(s) {
+  return s === 'AE' ? '中东站 AE' : s === 'SA' ? '沙特站 SA' : s || '';
+}
+
+/** 批量暂停清单弹窗：预览 + 复制 TSV + 下载 CSV（领星后台可粘贴） */
+function openPauseListModal(rows) {
+  const preview = rows
+    .map(
+      (r, i) =>
+        `<tr><td>${i + 1}</td><td>${esc(r.siteLabel)}</td><td>${esc(r.campaign)}</td><td>${esc(
+          r.keyword
+        )}</td><td>${esc(r.adTypeLabel)}</td></tr>`
+    )
+    .join('');
+  const body = `
+    <p class="field-tip" style="margin:0 0 10px">以下为诊断命中「高花费无转化」的关键词（关键词级数据）。清单可直接粘贴到<b>领星后台 → 广告 → 批量操作</b>的「暂停/否定关键词」框，或下载 CSV 后在批量模板中导入。</p>
+    <div class="table-scroll" style="max-height:360px">
+      <table class="data-table">
+        <thead><tr><th>#</th><th>站点</th><th>广告活动</th><th>关键词</th><th>广告类型</th></tr></thead>
+        <tbody>${preview}</tbody>
+      </table>
+    </div>
+    <div class="field-tip" style="margin-top:8px">共 <b>${rows.length}</b> 个关键词待暂停。复制结果为 TSV（关键词 / 活动 / 类型 / 站点），便于在表格中粘贴；下载为 UTF-8 CSV（含 BOM，Excel 可直接打开）。</div>`;
+  const m = openModal({
+    title: `批量暂停清单（${rows.length} 个关键词）`,
+    body,
+    width: 'wide',
+    footer: `<button class="btn btn-ghost" data-close>关闭</button><button class="btn btn-soft" data-copy>${icon(
+      'copy'
+    )} 复制清单(TSV)</button><button class="btn btn-primary" data-csv>${icon('download')} 下载 CSV</button>`,
+  });
+  m.el.querySelector('[data-close]').onclick = m.close;
+  m.el.querySelector('[data-copy]').onclick = async () => {
+    const ok = await copyText(pauseListToText(rows));
+    if (ok) toastSuccess(`已复制 ${rows.length} 个关键词，可粘贴到领星后台`);
+    else toastError('复制失败，请手动框选清单复制');
+  };
+  m.el.querySelector('[data-csv]').onclick = () => {
+    downloadPauseCSV(rows);
+    toastSuccess('已开始下载 CSV');
+  };
 }
 
 function openImportModal(rerender) {

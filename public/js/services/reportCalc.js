@@ -306,18 +306,12 @@ export function computeCategory(prepped) {
     a.adSpend += r.adSpend;
   }
 
-  // 类目按行数降序，未识别类目永远垫底（第 21 行）
-  const entries = [...agg.entries()].sort((x, y) => {
-    if (x[0] === '未识别类目' && y[0] !== '未识别类目') return 1;
-    if (y[0] === '未识别类目' && x[0] !== '未识别类目') return -1;
-    return y[1].skuCount - x[1].skuCount;
-  });
-
-  const rows = entries.slice(0, CATEGORY_TOP);
+  // 类目按行数降序；「未识别类目」固定在最后一行（第 21 行，保持模板 A24 位置）
+  const sorted = [...agg.entries()].sort((x, y) => y[1].skuCount - x[1].skuCount);
+  const top = sorted.filter(([c]) => c !== '未识别类目').slice(0, CATEGORY_TOP);
   // 未识别类目 = 数据里叫"未识别类目"的 + 超出 TOP20 的类目
   const unrec = agg.get('未识别类目') || { skuCount: 0, qty: 0, qty30: 0, sales: 0, profit: 0, refundQty: 0, adSpend: 0 };
-  for (const [cat, a] of entries.slice(CATEGORY_TOP)) {
-    if (cat === '未识别类目') continue;
+  for (const [cat, a] of sorted.filter(([c]) => c !== '未识别类目').slice(CATEGORY_TOP)) {
     unrec.skuCount += a.skuCount;
     unrec.qty += a.qty;
     unrec.qty30 += a.qty30;
@@ -326,11 +320,11 @@ export function computeCategory(prepped) {
     unrec.refundQty += a.refundQty;
     unrec.adSpend += a.adSpend;
   }
-  rows.push(['未识别类目', unrec]);
-
-  // 固定输出 CATEGORY_ROWS 行：不足的用空行补齐（覆盖模板残留旧值）
+  // 固定 21 行：TOP 类目（不足补空行到 20 行）+ 第 21 行「未识别类目」（保持模板 A24 位置）
+  const rows = [...top];
   const empty = { skuCount: 0, qty: 0, qty30: 0, sales: 0, profit: 0, refundQty: 0, adSpend: 0 };
-  while (rows.length < CATEGORY_ROWS) rows.push(['', empty]);
+  while (rows.length < CATEGORY_TOP) rows.push(['', empty]);
+  rows.push(['未识别类目', unrec]);
 
   return rows.map(([cat, a]) => ({
     cat,

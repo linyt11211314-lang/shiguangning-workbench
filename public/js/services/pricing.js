@@ -97,9 +97,16 @@ export function calculateQuote(input = {}) {
  */
 export function apply99(quote) {
   if (!quote || quote.error || !isFinite(quote.price)) return null;
+  // 理论售价（calculateQuote 已含全部费率与目标利润率，是达成目标利润率的精确售价）
+  // 注意：此处不预先对 p 做 2 位四舍五入——calculateQuote 本身已返回 2 位价；
+  // 若提前四舍五入会把 1.991 之类亚分位价压成 1.99，导致后续比较误判为利润率不达标。
   const p = quote.price;
-  let d = Math.floor(p) + 0.99;
-  if (d < p) d = Math.floor(p) + 1.99;
+  // 显示价必须以 .99 结尾，且保证 >= 理论售价（利润率达标）：
+  //   先 floor + 0.99；若仍低于理论价，则 +1 → floor + 1.99
+  // 用 round2 + epsilon 规避浮点误差（如 35 + 0.99 在 IEEE754 下可能得 35.9899…）
+  const floorP = Math.floor(p);
+  let d = Math.round((floorP + 0.99) * 100) / 100;
+  if (d < p - 1e-9) d = Math.round((floorP + 1.99) * 100) / 100;
   const b = quote.breakdown || {};
   const total = (Number(b.costUsd) || 0) + (Number(b.fbaFee) || 0) + (Number(b.shippingPerUnit) || 0);
   const fiveDed = (Number(b.referral) || 0) + (Number(b.ad) || 0) + (Number(b.avt) || 0) + (Number(b.storage) || 0) + (Number(b.return) || 0);

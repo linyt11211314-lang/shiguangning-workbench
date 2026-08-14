@@ -19,6 +19,7 @@
  */
 
 import { DATA_SHEET } from './reportTemplate.js';
+import { prepRows, computeOverview, computeCases, computeCategory, categorySummary, MONTHLY_ROWS } from './reportCalc.js';
 
 const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
@@ -70,8 +71,126 @@ export function toNumber(v) {
   return pct ? n / 100 : n;
 }
 
-/* ===================== 模板列信息提取 ===================== */
+/** 解 XML 实体 */
+function unescapeXml(s) {
+  return String(s)
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&amp;/g, '&');
+}
 
+/**
+ * 打补丁：重写单个单元格的值，保留原有 s= 样式
+ * 数字 → <v>；文本 → inlineStr；空 → 空单元格
+ */
+export function patchCell(sheetXml, ref, value) {
+  const re = new RegExp(`<c\\s+r="${ref}"([^>]*?)(?:\\/>|>([\\s\\S]*?)<\\/c>)`);
+  if (!re.test(sheetXml)) return { xml: sheetXml, ok: false };
+  const xml = sheetXml.replace(re, (m, attrs) => {
+    const a = String(attrs).replace(/\s*t="[^"]*"/g, '');
+    if (value === '' || value == null) return `<c r="${ref}"${a}/>`;
+    if (typeof value === 'number') return `<c r="${ref}"${a}><v>${value}</v></c>`;
+    return `<c r="${ref}"${a} t="inlineStr"><is><t xml:space="preserve">${xmlEsc(value)}</t></is></c>`;
+  });
+  return { xml, ok: true };
+}
+
+/** 解析共享字符串表（兼容富文本多 <t>） */
+export async function parseSharedStrings(zip) {
+  const f = zip.file('xl/sharedStrings.xml');
+  if (!f) return [];
+  const xml = await f.async('string');
+  const arr = [];
+  for (const m of xml.matchAll(/<si>([\s\S]*?)<\/si>/g)) {
+    let text = '';
+    for (const t of m[1].matchAll(/<t[^>]*>([\s\S]*?)<\/t>/g)) text += t[1];
+    arr.push(unescapeXml(text));
+  }
+  return arr;
+}
+
+/** 解析指定 Sheet 的 A/B 两列文本（SKU → 品名），兼容共享字符串 / inlineStr / 直接值 */
+export async function parseColsAB(zip, path, shared, minRow = 1, maxRow = 100000) {
+  if (!path || !zip.file(path)) return {};
+  const xml = await zip.file(path).async('string');
+  const map = {};
+  for (const rm of xml.matchAll(/<row r="(\d+)"[^>]*>([\s\S]*?)<\/row>/g)) {
+    const r = Number(rm[1]);
+    if (r < minRow || r > maxRow) continue;
+    const vals = {};
+    for (const cm of rm[2].matchAll(/<c\s+r="([A-Z]+)\d+"([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/g)) {
+      const L = cm[1];
+      const attrs = cm[2] || '';
+      const inner = cm[3] || '';
+      const tM = attrs.match(/\bt="([^"]+)"/);
+      const vM = inner.match(/<v>([\s\S]*?)<\/v>/);
+      let val = '';
+      if (tM && tM[1] === 's' && vM) val = shared[Number(vM[1])] ?? '';
+      else if (vM) val = vM[1];
+      else if (tM && tM[1] === 'inlineStr') {
+        const t = inner.match(/<t[^>]*>([\s\S]*?)<\/t>/);
+        val = t ? t[1] : '';
+      }
+      vals[L] = unescapeXml(val);
+    }
+    if (vals.A && vals.B) map[vals.A] = vals.B;
+  }
+  return map;
+}
+
+/** 解析 Sheet 单列文本列表（如类目汇总 A4:A24） */
+export async function parseColumnList(zip, path, shared, refs) {
+  if (!path || !zip.file(path)) return [];
+  const xml = await zip.file(path).async('string');
+  const out = [];
+  for (const ref of refs) {
+    const m = xml.match(new RegExp(`<c\\s+r="${ref}"([^>]*?)(?:\\/>|>([\\s\\S]*?)<\\/c>)`));
+    if (!m) continue;
+    const attrs = m[1] || '';
+    const inner = m[2] || '';
+    const tM = attrs.match(/\bt="([^"]+)"/);
+    const vM = inner.match(/<v>([\s\S]*?)<\/v>/);
+    let val = '';
+    if (tM && tM[1] === 's' && vM) val = shared[Number(vM[1])] ?? '';
+    else if (vM) val = vM[1];
+    val = unescapeXml(val).trim();
+    if (val) out.push(val);
+  }
+  return out;
+}
+
+/** 生成 A4..A24 这类引用列表 */
+function rangeRefs(from, to, col) {
+  const out = [];
+  for (let r = from; r <= to; r++) out.push(`${col}${r}`);
+  return out;
+}
+
+/** 打 5 行案例块补丁（A~H），空行清空 */
+function patchCaseBlock(sheetXml, rows, startRow) {
+  let s = sheetXml;
+  for (let i = 0; i < 5; i++) {
+    const r = startRow + i;
+    const d = rows[i];
+    if (d) {
+      s = patchCell(s, `A${r}`, d.sku).xml;
+      s = patchCell(s, `B${r}`, d.name).xml;
+      s = patchCell(s, `C${r}`, d.shop).xml;
+      s = patchCell(s, `D${r}`, d.qty).xml;
+      s = patchCell(s, `E${r}`, d.qty30).xml;
+      s = patchCell(s, `F${r}`, d.profit).xml;
+      s = patchCell(s, `G${r}`, d.refundRate).xml;
+      s = patchCell(s, `H${r}`, d.advice || '').xml;
+    } else {
+      for (const L of ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']) s = patchCell(s, `${L}${r}`, '').xml;
+    }
+  }
+  return s;
+}
+
+/* ===================== 模板列信息提取 ===================== */
 /**
  * 从模板数据行解析每列的「类型 + 样式」，用于生成时保持格式
  * @param {string} sheetXml
@@ -238,8 +357,7 @@ export async function generateReport({ templateBlob, headers, rows, onProgress }
   const dimension = `A1:${colLetter(colLetters.length)}${lastRow}`;
   if (/<dimension[^>]*\/>/.test(sheet)) sheet = sheet.replace(/<dimension[^>]*\/>/, `<dimension ref="${dimension}"/>`);
 
-  say(68, '正在同步公式引用范围…');
-  // 数据超出模板容量 → 扩展 VLOOKUP 引用范围 / autoFilter / 定义名称
+  say(68, '正在同步公式引用范围…');  // 数据超出模板容量 → 扩展 VLOOKUP 引用范围 / autoFilter / 定义名称
   const lookupEnd = Math.max(tplEnd, lastRow);
   const expanded = tplEnd > 0 && lastRow > tplEnd;
   if (expanded) {
@@ -249,6 +367,92 @@ export async function generateReport({ templateBlob, headers, rows, onProgress }
     );
   }
   zip.file(dsPath, sheet);
+
+  // ===== 三 Sheet 重算补丁：概况 / 案例分析 / 全店铺全SKU类目汇总 =====
+  // 这三个 Sheet 在模板里是硬编码快照（无公式），必须用上传数据重算后写回
+  say(70, '正在重算概况 / 案例分析 / 类目汇总…');
+  const patched = { overview: false, cases: false, category: false };
+  try {
+    const shared = await parseSharedStrings(zip);
+    const perfPath = sheetPath('产品表现');
+    const ovPath = sheetPath('概况');
+    const casePath = sheetPath('案例分析');
+    const catPath = sheetPath('全店铺全SKU类目汇总');
+
+    const skuNameMap = await parseColsAB(zip, perfPath, shared, 3);
+    const prepped = prepRows(rows);
+    const ov = computeOverview(prepped);
+    const cases = computeCases(prepped, skuNameMap);
+
+    if (ovPath && zip.file(ovPath)) {
+      let s3 = await zip.file(ovPath).async('string');
+      for (const [ref, v] of Object.entries(ov.kpis)) s3 = patchCell(s3, ref, v).xml;
+      for (let i = 0; i < MONTHLY_ROWS; i++) {
+        const row = 5 + i;
+        const m = ov.monthly[i];
+        if (m) {
+          s3 = patchCell(s3, `D${row}`, m.ym).xml;
+          s3 = patchCell(s3, `E${row}`, m.skuCount).xml;
+          s3 = patchCell(s3, `F${row}`, m.qty).xml;
+          s3 = patchCell(s3, `G${row}`, m.qty30).xml;
+          s3 = patchCell(s3, `H${row}`, m.sales).xml;
+          s3 = patchCell(s3, `I${row}`, m.profit).xml;
+          s3 = patchCell(s3, `J${row}`, m.margin).xml;
+          s3 = patchCell(s3, `K${row}`, m.refundQty).xml;
+          s3 = patchCell(s3, `L${row}`, m.refundRate).xml;
+          s3 = patchCell(s3, `M${row}`, m.adSpend).xml;
+        } else {
+          for (const L of ['D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M']) s3 = patchCell(s3, `${L}${row}`, '').xml;
+        }
+      }
+      s3 = patchCell(s3, 'E15', ov.profitState.pos).xml;
+      s3 = patchCell(s3, 'E16', ov.profitState.neg).xml;
+      s3 = patchCell(s3, 'E22', ov.summary[0]).xml;
+      s3 = patchCell(s3, 'E23', ov.summary[1]).xml;
+      s3 = patchCell(s3, 'E24', ov.summary[2]).xml;
+      zip.file(ovPath, s3);
+      patched.overview = true;
+    }
+
+    if (casePath && zip.file(casePath)) {
+      let s4 = await zip.file(casePath).async('string');
+      s4 = patchCaseBlock(s4, cases.topSales, 6);
+      s4 = patchCell(s4, 'H6', cases.topAdvice).xml;
+      s4 = patchCaseBlock(s4, cases.lossLeaders, 15);
+      s4 = patchCaseBlock(s4, cases.refundTop, 24);
+      s4 = patchCaseBlock(s4, cases.zeroSales, 33);
+      s4 = patchCell(s4, 'H33', cases.zeroSales.length ? '零销量产品，建议检查链接状态、优化主图或清库存' : '').xml;
+      zip.file(casePath, s4);
+      patched.cases = true;
+    }
+
+    if (catPath && zip.file(catPath)) {
+      const tplCats = await parseColumnList(zip, catPath, shared, rangeRefs(4, 24, 'A'));
+      const catRows = computeCategory(prepped, tplCats.length ? tplCats : ['未识别类目']);
+      let s6 = await zip.file(catPath).async('string');
+      for (let i = 0; i < catRows.length; i++) {
+        const row = 4 + i;
+        const d = catRows[i];
+        s6 = patchCell(s6, `A${row}`, d.cat).xml;
+        s6 = patchCell(s6, `B${row}`, d.skuCount).xml;
+        s6 = patchCell(s6, `C${row}`, d.qty).xml;
+        s6 = patchCell(s6, `D${row}`, d.qty30).xml;
+        s6 = patchCell(s6, `E${row}`, d.sales).xml;
+        s6 = patchCell(s6, `F${row}`, d.profit).xml;
+        s6 = patchCell(s6, `G${row}`, d.margin).xml;
+        s6 = patchCell(s6, `H${row}`, d.refundQty).xml;
+        s6 = patchCell(s6, `I${row}`, d.refundRate).xml;
+        s6 = patchCell(s6, `J${row}`, d.adSpend).xml;
+      }
+      s6 = patchCell(s6, 'A28', categorySummary(catRows)).xml;
+      zip.file(catPath, s6);
+      patched.category = true;
+    }
+  } catch (err) {
+    // 补丁失败不影响主数据写入（领星数据源已成功），仅记录
+    say(71, `提示：概况/案例/类目重算失败（${err.message}），其余部分照常生成`);
+    await tick();
+  }
 
   let wbMod = wbXml;
   if (expanded) {
@@ -298,7 +502,16 @@ export async function generateReport({ templateBlob, headers, rows, onProgress }
   const data = await zip.generateAsync({ type: 'arraybuffer', compression: 'DEFLATE' });
   say(100, '报表生成完成');
 
-  return { data, blob: toXlsxBlob(data), rowCount: rows.length, dimension, lookupEnd, expanded, pivotCount };
+  return {
+    data,
+    blob: toXlsxBlob(data),
+    rowCount: rows.length,
+    dimension,
+    lookupEnd,
+    expanded,
+    pivotCount,
+    patched,
+  };
 }
 
 /** 字节 → 可下载的 xlsx Blob */

@@ -698,7 +698,10 @@ async function doGenerate() {
 
     state.busy = false;
     const extra = res.expanded ? `（公式引用范围已自动扩展到第 ${fmtInt(res.lookupEnd)} 行）` : '';
-    setStatus(`报告已生成并开始下载：${fileName} · ${fmtInt(res.rowCount)} 行数据${extra}`, 'ok', 100);
+    const sync = res.patched && (res.patched.overview || res.patched.cases || res.patched.category)
+      ? '，已同步 概况/案例分析/类目汇总'
+      : '';
+    setStatus(`报告已生成并开始下载：${fileName} · ${fmtInt(res.rowCount)} 行数据${sync}${extra}`, 'ok', 100);
     paint();
     toastSuccess(`报告已生成：${fileName}`);
   } catch (err) {

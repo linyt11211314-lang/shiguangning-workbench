@@ -8,6 +8,7 @@ import { esc, copyText } from '../utils.js';
 import { toastSuccess, toastError, toastInfo } from '../ui/toast.js';
 import { confirmDialog, openModal } from '../ui/modal.js';
 import { renderLineChart } from '../ui/lineChart.js';
+import { STORAGE_KEYS } from '../config.js';
 import {
   listRecords,
   listImports,
@@ -22,7 +23,29 @@ import {
   buildRecords,
   validateMapping,
 } from '../services/adParse.js';
-import { diagnose, suggestionToText, buildPauseList, pauseListToCSV, pauseListToText } from '../services/diagnose.js';
+import {
+  diagnose,
+  suggestionToText,
+  buildPauseList,
+  pauseListToCSV,
+  pauseListToText,
+  computeSiteMetrics,
+} from '../services/diagnose.js';
+import {
+  highlightTerms,
+  buildKnowledgeCard,
+  termForRule,
+  GLOSSARY,
+  TERM_ORDER,
+} from '../services/knowledge.js';
+import {
+  markTerm,
+  isMastered,
+  learnedCount,
+  lastLearned,
+  levelLabel,
+  masteredList,
+} from '../store/learningStore.js';
 import {
   addFeedback,
   listFeedback,
@@ -43,6 +66,39 @@ let viewEnd = null;
 // —— 诊断面板状态（模块级，跨重渲染保持）——
 let isDiagnosing = false; // 刷新诊断时的加载态
 let currentSuggestions = []; // 当前渲染的建议列表（供采纳/忽略按 id 查找）
+
+// —— 折叠面板状态（默认：诊断展开，其余收起；持久化到 localStorage）——
+const PANEL_DEFAULTS = { diagnosis: true, trend: false, compare: false, detail: false, learn: false };
+function loadPanels() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.ADS_PANELS);
+    if (!raw) return { ...PANEL_DEFAULTS };
+    return { ...PANEL_DEFAULTS, ...JSON.parse(raw) };
+  } catch (_) {
+    return { ...PANEL_DEFAULTS };
+  }
+}
+function savePanels(p) {
+  try {
+    localStorage.setItem(STORAGE_KEYS.ADS_PANELS, JSON.stringify(p));
+  } catch (_) {
+    /* 忽略 */
+  }
+}
+let panelState = loadPanels();
+function togglePanel(key) {
+  panelState[key] = !panelState[key];
+  savePanels(panelState);
+}
+
+// 各站点概览指标（供知识卡「你的数据」对比）
+let lastSiteMetrics = {};
+function siteMetricFor(site) {
+  return lastSiteMetrics[site] || null;
+}
+// 趋势图重绘用（展开面板后重绘）
+let lastRanged = [];
+let lastDaily = null;
 
 function fmtNum(v, dec = 2) {
   const n = Number(v) || 0;
@@ -176,6 +232,14 @@ export function render(container, { rerender } = {}) {
   const sites = [...new Set(all.map((r) => r.site))].sort();
   const daily = dailySeries(ranged, start, end);
 
+  // 各站点概览指标（供知识卡对比用户数据）
+  lastSiteMetrics = {};
+  for (const s of ['AE', 'SA']) {
+    lastSiteMetrics[s] = computeSiteMetrics(s, ranged.filter((r) => r.site === s), all, start, end, rangeLabel());
+  }
+  lastRanged = ranged;
+  lastDaily = daily;
+
   // 诊断建议（刷新加载态时跳过重新计算，保留原结果）
   let diag = { suggestions: [] };
   if (!isDiagnosing) {
@@ -190,6 +254,8 @@ export function render(container, { rerender } = {}) {
   wireFilter(container, rerender);
   wireDashboard(container, ranged, daily);
   wireDiagnosis(container, rerender);
+  wireCollapse(container, rerender);
+  wireGlossary(container, rerender);
 
   // 删除导入批次
   container.querySelectorAll('[data-del-import]').forEach((btn) => {
@@ -261,17 +327,12 @@ function renderDashboard(ranged, imports, start, end, daily, sites, diag) {
     )
     .join('');
 
-  const showChart = ranged.length > 0;
-  const chartCard = `
-    <div class="card" style="margin-bottom:18px">
-      <div class="card-pad">
-        <div class="section-head" style="margin-bottom:10px">
-          <div class="section-title">📈 广告趋势</div>
-          ${renderRangeFilter()}
-        </div>
-        <div id="adsChart" class="ads-chart" style="position:relative"></div>
-      </div>
-    </div>`;
+  const chartInner = `
+    <div class="section-head" style="margin-bottom:10px">
+      <div class="section-title">📈 广告趋势</div>
+      ${renderRangeFilter()}
+    </div>
+    <div id="adsChart" class="ads-chart" style="position:relative"></div>`;
 
   // 双站点对比
   const siteCards = ['AE', 'SA']
@@ -316,12 +377,12 @@ function renderDashboard(ranged, imports, start, end, daily, sites, diag) {
 
   // 明细表（含关键词级字段时补充列）
   const hasKw = ranged.some((r) => r.keyword);
-  const kwHead = hasKw ? `<th>关键词</th><th>广告类型</th><th class="num">出价</th>` : '';
+  const kwHead = hasKw ? `<th>关键词</th><th>广告类型</th><th class="num">出价</th><th class="num">匹配</th>` : '';
   const kwRow = (r) =>
     hasKw
       ? `<td>${esc(r.keyword || '—')}</td><td>${esc(r.adType ? adTypeLabel(r.adType) : '—')}</td><td class="num">${
           r.bid ? fmtNum(r.bid) : '—'
-        }</td>`
+        }</td><td>${esc(r.matchType ? matchTypeLabelLocal(r.matchType) : '—')}</td>`
       : '';
   const tableRows = ranged
     .slice()
@@ -341,6 +402,17 @@ function renderDashboard(ranged, imports, start, end, daily, sites, diag) {
     )
     .join('');
 
+  const compareInner = `<div class="site-grid">${siteCards}</div>`;
+  const detailInner = `
+    <div class="table-scroll ads-detail" style="max-height:520px">
+      <table class="data-table">
+        <thead>
+          <tr><th>日期</th><th>站点</th>${kwHead}<th class="num">花费</th><th class="num">销售额</th><th class="num">曝光</th><th class="num">点击</th><th class="num">订单</th></tr>
+        </thead>
+        <tbody>${tableRows || `<tr><td colspan="${hasKw ? 11 : 7}" style="text-align:center;color:var(--text-sub)">该时间范围内暂无数据</td></tr>`}</tbody>
+      </table>
+    </div>`;
+
   return `
     <div class="card" style="margin-bottom:18px">
       <div class="card-pad">
@@ -354,49 +426,98 @@ function renderDashboard(ranged, imports, start, end, daily, sites, diag) {
           <div class="ads-stat"><div class="ads-stat-v acos-${ovHealth.cls}">${ov.acos == null ? 'N/A' : ov.acos.toFixed(1) + '%'} ${ovHealth.dot}</div><div class="ads-stat-l">整体 ACOS（${ovHealth.label}）</div></div>
         </div>
         <div class="ads-meta-line">覆盖站点：${sites.map(siteLabel).join('、') || '-'} ｜ 日期范围：${start} ~ ${end} ｜ 总点击 ${fmtInt(totalClicks)} ｜ 总订单 ${fmtInt(totalOrders)}</div>
+        ${renderCognitiveCard()}
       </div>
-    </div>
-
-    ${renderDiagnosis(diag)}
-
-    <div class="card" style="margin-bottom:18px">
-      <div class="card-pad">
-        <div class="section-head" style="margin-bottom:10px">
-          <div class="section-title">导入记录</div>
-        </div>
+      <div class="card-pad" style="border-top:1px solid var(--border);padding-top:14px">
+        <div class="section-head" style="margin-bottom:10px"><div class="section-title">导入记录</div></div>
         <div class="imp-list">${importRows || '<div class="field-tip">暂无导入记录</div>'}</div>
       </div>
     </div>
 
-    ${chartCard}
+    ${collapseCard('diagnosis', '🧠 诊断建议', renderDiagnosis(diag), {
+      open: panelState.diagnosis,
+      headExtra: diagnosisHeadHtml(diag),
+      headSub: diag.suggestions.length ? `共 ${diag.suggestions.length} 条` : '',
+    })}
 
-    <div class="card" style="margin-bottom:18px">
-      <div class="card-pad">
-        <div class="section-head" style="margin-bottom:12px">
-          <div class="section-title">双站点对比</div>
-        </div>
-        <div class="site-grid">${siteCards}</div>
-      </div>
-    </div>
+    ${collapseCard('trend', '📈 广告趋势', chartInner, {
+      open: panelState.trend,
+      headSub: daily.fullDates ? `共 ${daily.fullDates.length} 天数据` : '',
+    })}
 
-    <div class="card">
-      <div class="card-pad">
-        <div class="section-head" style="margin-bottom:10px">
-          <div class="section-title">明细数据</div>
-          <span class="section-sub">${ranged.length ? `共 ${ranged.length} 条` : '无数据'}</span>
-        </div>
-        <div class="table-scroll ads-detail" style="max-height:520px">
-          <table class="data-table">
-            <thead>
-              <tr><th>日期</th><th>站点</th>${kwHead}<th class="num">花费</th><th class="num">销售额</th><th class="num">曝光</th><th class="num">点击</th><th class="num">订单</th></tr>
-            </thead>
-            <tbody>${tableRows || `<tr><td colspan="${hasKw ? 10 : 7}" style="text-align:center;color:var(--text-sub)">该时间范围内暂无数据</td></tr>`}</tbody>
-          </table>
-        </div>
-      </div>
-    </div>
+    ${collapseCard('compare', '🇦🇪 🇸🇦 站点对比', compareInner, { open: panelState.compare })}
+
+    ${collapseCard('detail', '📋 明细数据', detailInner, {
+      open: panelState.detail,
+      headSub: ranged.length ? `共 ${ranged.length} 条` : '无数据',
+    })}
+
+    ${collapseCard('learn', '📖 广告知识库', renderKnowledgeBase(ranged), { open: panelState.learn })}
 
     ${renderFeedbackFooter()}`;
+}
+
+/** 折叠卡片封装（头部点击展开/收起，状态持久化） */
+function collapseCard(key, title, bodyHtml, { open, headExtra = '', headSub = '' } = {}) {
+  return `
+    <div class="collapse-wrap ${open ? 'open' : ''}" data-panel="${key}" style="margin-bottom:18px">
+      <div class="collapse-head" data-panel-toggle="${key}">
+        <span class="ch-title">${title}</span>
+        ${headSub ? `<span class="ch-sub">${esc(headSub)}</span>` : ''}
+        <span class="ch-actions">${headExtra}</span>
+        <span class="ch-arrow">${icon('chevronDown')}</span>
+      </div>
+      <div class="collapse-body">${bodyHtml}</div>
+    </div>`;
+}
+
+/** 认知水平评估卡 */
+function renderCognitiveCard() {
+  const n = learnedCount();
+  const lv = levelLabel(n);
+  const pct = Math.round((n / 8) * 100);
+  const last = lastLearned();
+  const lastTxt = last.term && last.at ? `最近学习：${new Date(last.at).toLocaleDateString('zh-CN')} 查看了「${GLOSSARY[last.term] ? GLOSSARY[last.term].name : last.term}」` : '还没有学习记录，点击诊断卡里的「❓」开始吧';
+  return `
+    <div class="cog-card">
+      <div class="cog-head">📊 你的广告认知水平：<span class="cog-level">📍 ${esc(lv)}</span>（已掌握 ${n}/8 个概念）</div>
+      <div class="cog-bar"><div class="cog-bar-fill" style="width:${pct}%"></div></div>
+      <div class="cog-meta">${lastTxt}</div>
+    </div>`;
+}
+
+/** 广告知识库面板 */
+function renderKnowledgeBase(ranged) {
+  const mastered = masteredList();
+  const terms = TERM_ORDER.map((id) => {
+    const t = GLOSSARY[id];
+    const done = mastered.includes(id);
+    return `<button class="kb-term ${done ? 'done' : ''}" data-kb-term="${id}">
+        ${done ? '✅' : '🔲'} <b>${esc(t.name)}</b>${done ? '（已掌握）' : '（未学习）'}
+      </button>`;
+  }).join('');
+  const last = lastLearned();
+  return `
+    <div class="kb">
+      <div class="kb-section-title">📚 核心术语（点击查看详情）</div>
+      <div class="kb-terms">${terms}</div>
+      <div class="kb-section-title">📖 学习资源</div>
+      <ul class="kb-resources">
+        <li>第一章：广告基础概念 → 理解核心指标（ACOS / ROAS / CTR / CVR）</li>
+        <li>第二章：广告匹配类型 → 广泛 / 词组 / 精准 什么时候用哪种</li>
+        <li>第三章：广告优化流程 → 从诊断到操作的完整指南</li>
+        <li>FAQ：常见问题解答</li>
+      </ul>
+      <div class="kb-section-title">📝 我的学习记录</div>
+      <div class="kb-record">已学习 ${mastered.length}/8 个概念 ｜ ${last.term ? `最近学习：${new Date(last.at).toLocaleString('zh-CN')} 查看了「${GLOSSARY[last.term] ? GLOSSARY[last.term].name : last.term}」` : '还没有学习记录'}</div>
+    </div>`;
+}
+
+function matchTypeLabelLocal(t) {
+  if (t === 'broad') return '广泛匹配';
+  if (t === 'phrase') return '词组匹配';
+  if (t === 'exact') return '精准匹配';
+  return '—';
 }
 
 function renderRangeFilter() {
@@ -481,28 +602,10 @@ function wireDashboard(container, ranged, daily) {
 
 function renderDiagnosis(diag) {
   if (isDiagnosing) {
-    return `
-    <div class="card diag-panel">
-      <div class="card-pad diag-loading"><span class="diag-spin"></span> 正在分析数据并生成诊断建议…</div>
-    </div>`;
+    return `<div class="diag-loading"><span class="diag-spin"></span> 正在分析数据并生成诊断建议…</div>`;
   }
   const n = diag.suggestions.length;
   const pauseRows = buildPauseList(diag.suggestions);
-  const pauseBtn =
-    pauseRows.length > 0
-      ? `<button class="btn btn-danger-soft btn-sm" data-diag-pause title="导出可粘贴到领星后台批量暂停的关键词清单">${icon(
-          'copy'
-        )} 批量暂停清单（${pauseRows.length}）</button>`
-      : '';
-  const header = `
-    <div class="section-head" style="margin-bottom:10px">
-      <div class="section-title">🧠 诊断建议</div>
-      <div class="diag-actions-top">
-        <button class="btn btn-soft btn-sm" data-diag-refresh>${icon('refresh')} 刷新诊断</button>
-        ${pauseBtn}
-        <button class="btn btn-ghost btn-sm" data-diag-stats>${icon('chart')} 反馈统计</button>
-      </div>
-    </div>`;
   const sub = n
     ? `<div class="diag-sub">基于${rangeLabel()}数据自动生成 · 共 ${n} 条建议（按优先级排序）· 数据粒度：${granularityText(
         diag.dataGranularity
@@ -512,7 +615,27 @@ function renderDiagnosis(diag) {
     n === 0
       ? `<div class="diag-nodata">🎉 当前区间数据未触发任何风险项，各项指标处于健康范围，继续保持关注即可。</div>`
       : diag.suggestions.map(renderDiagCard).join('');
-  return `<div class="card diag-panel"><div class="card-pad">${header}${sub}${body}</div></div>`;
+  let pauseSummary = '';
+  if (pauseRows.length > 0) {
+    const waste = pauseRows.reduce((s, r) => s + (Number(r.cost) || 0), 0);
+    pauseSummary = `<div class="diag-pause-summary">含高花费无转化关键词，建议查看暂停清单：<b>${pauseRows.length}</b> 个关键词待暂停，累计浪费 <b>¥${fmtNum(waste)}</b></div>`;
+  }
+  return `${sub}${body}${pauseSummary}`;
+}
+
+/** 诊断面板头部操作按钮（放入折叠头，不重复渲染标题） */
+function diagnosisHeadHtml(diag) {
+  const pauseRows = buildPauseList(diag.suggestions);
+  const pauseBtn =
+    pauseRows.length > 0
+      ? `<button class="btn btn-danger-soft btn-sm" data-diag-pause title="导出可粘贴到领星后台批量暂停的关键词清单">${icon(
+          'copy'
+        )} 批量暂停清单（${pauseRows.length}）</button>`
+      : '';
+  return `
+    <button class="btn btn-soft btn-sm" data-diag-refresh>${icon('refresh')} 刷新诊断</button>
+    ${pauseBtn}
+    <button class="btn btn-ghost btn-sm" data-diag-stats>${icon('chart')} 反馈统计</button>`;
 }
 
 function renderDiagCard(sug) {
@@ -521,12 +644,16 @@ function renderDiagCard(sug) {
     mid: { cls: 'mid', icon: '🟡', label: '中优先级' },
     low: { cls: 'low', icon: '🟢', label: '低优先级' },
   }[sug.priority];
-  const dataRows = sug.dataSupport.map((d) => `<li>${esc(d)}</li>`).join('');
-  const points = sug.points.map((p) => `<li>${esc(p)}</li>`).join('');
+  const dataRows = sug.dataSupport.map((d) => `<li>${highlightTerms(d)}</li>`).join('');
+  const points = sug.points.map((p) => `<li>${highlightTerms(p)}</li>`).join('');
   const fb = feedbackById(sug.id);
+  const termId = termForRule(sug.ruleKey);
   const copyKwBtn = sug.pauseAction
     ? `<button class="btn btn-ghost btn-sm" data-copy-kw="${esc(sug.id)}">${icon('copy')} 复制关键词</button>`
     : '';
+  const askBtn = `<button class="btn btn-ghost btn-sm" data-ask-term="${esc(termId)}" data-sug-id="${esc(
+    sug.id
+  )}" title="查看这个术语的通俗解释">${icon('help')} 我不懂这个词</button>`;
   const actions = fb
     ? `<div class="diag-resolved ${fb.feedback === 'accept' ? 'ok' : 'no'}">${
         fb.feedback === 'accept' ? '✅ 已采纳' : '❌ 已忽略'
@@ -535,9 +662,13 @@ function renderDiagCard(sug) {
         <button class="btn btn-soft btn-sm" data-accept="${esc(sug.id)}">👍 采纳</button>
         <button class="btn btn-ghost btn-sm" data-ignore="${esc(sug.id)}">👎 忽略</button>
         ${copyKwBtn}
+        ${askBtn}
       </div>`;
+  const impactLine = sug.impact
+    ? `<div class="diag-impact-inline">💰 ${highlightTerms(sug.impact)}</div>`
+    : '';
   return `
-    <div class="diag-card diag-${prioCfg.cls}">
+    <div class="diag-card diag-${prioCfg.cls}" data-site="${esc(sug.site)}">
       <div class="diag-card-head">
         <span class="diag-prio prio-${prioCfg.cls}">${prioCfg.icon} ${prioCfg.label}</span>
         <span class="diag-site">${esc(sug.siteLabel)}</span>
@@ -545,22 +676,20 @@ function renderDiagCard(sug) {
       <div class="diag-object">📍 ${esc(sug.objectLabel)}</div>
       <div class="diag-issue">${esc(sug.problem)}</div>
 
-      <div class="diag-block">
-        <div class="diag-block-title">📊 数据支撑</div>
-        <ul class="diag-data">${dataRows || '<li>—</li>'}</ul>
+      <div class="diag-plain">
+        <div class="diag-plain-title">💡 这是什么意思？</div>
+        <div class="diag-plain-body">${sug.plainExplain ? highlightTerms(sug.plainExplain) : '—'}</div>
+        ${impactLine}
       </div>
-      <div class="diag-block">
-        <div class="diag-block-title">💰 影响量化</div>
-        <div class="diag-impact">${esc(sug.impact)}</div>
+
+      <div class="diag-ops" data-ops-toggle>
+        <div class="diag-ops-head"><span class="diag-ops-arrow">${icon('chevronRight')}</span> 🎯 推荐操作（点击展开）</div>
+        <div class="diag-ops-body">
+          <ol class="diag-points">${points}</ol>
+          ${sug.expected ? `<div class="diag-expected-block">📈 预期效果：${highlightTerms(sug.expected)}</div>` : ''}
+        </div>
       </div>
-      <div class="diag-block">
-        <div class="diag-block-title">🎯 可执行操作</div>
-        <ol class="diag-points">${points}</ol>
-      </div>
-      <div class="diag-block">
-        <div class="diag-block-title">📈 预期效果</div>
-        <div class="diag-expected">${esc(sug.expected)}</div>
-      </div>
+
       ${sug.granularityNote ? `<div class="diag-note">💡 ${esc(sug.granularityNote)}</div>` : ''}
       ${actions}
     </div>`;
@@ -679,6 +808,29 @@ function wireDiagnosis(container, rerender) {
       });
     });
   });
+
+  // 「❓ 我不懂这个词」→ 打开知识卡（标记已掌握）
+  container.querySelectorAll('[data-ask-term]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const termId = btn.dataset.askTerm;
+      const sug = currentSuggestions.find((s) => s.id === btn.dataset.sugId);
+      const site = sug ? sug.site : '';
+      openKnowledgeCard(termId, buildTermData(site), rerender);
+    });
+  });
+
+  // 知识库面板中的术语 → 打开知识卡
+  container.querySelectorAll('[data-kb-term]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      openKnowledgeCard(btn.dataset.kbTerm, buildTermData(''), rerender);
+    });
+  });
+
+  // 推荐操作折叠（默认收起，点击展开）
+  container.querySelectorAll('[data-ops-toggle]').forEach((box) => {
+    const head = box.querySelector('.diag-ops-head');
+    head.addEventListener('click', () => box.classList.toggle('open'));
+  });
 }
 
 function openFeedbackModal(rerender) {
@@ -736,6 +888,108 @@ function openFeedbackModal(rerender) {
   });
 }
 
+/** 构造知识卡所需的用户数据（取某站点概览指标） */
+function buildTermData(site) {
+  const m = (site && siteMetricFor(site)) || lastSiteMetrics.AE || lastSiteMetrics.SA || null;
+  if (!m) return {};
+  return { acos: m.acos, roas: m.roas, ctr: m.ctr, cvr: m.convRate };
+}
+
+/** 知识卡弹窗（点击「❓ 我不懂这个词」/术语悬浮词/知识库术语触发） */
+function openKnowledgeCard(termId, data, rerender) {
+  const t = GLOSSARY[termId];
+  if (!t) return;
+  markTerm(termId); // 标记已掌握（不重复计数）
+  const body = buildKnowledgeCard(termId, data || {});
+  const m = openModal({
+    title: `广告小课堂 · ${t.name}`,
+    body,
+    width: 'wide',
+    footer: `<button class="btn btn-ghost" data-more>📚 查看更多广告知识</button><button class="btn btn-primary" data-close>👌 明白了，继续操作</button>`,
+  });
+  m.el.querySelector('[data-close]').onclick = () => {
+    m.close();
+    if (rerender) rerender(); // 刷新认知水平卡 / 知识库勾选
+  };
+  m.el.querySelector('[data-more]').onclick = () => {
+    m.close();
+    panelState.learn = true;
+    savePanels(panelState);
+    if (rerender) rerender();
+  };
+}
+
+/** 折叠面板：点击头部展开/收起，状态持久化；展开趋势时重绘图表 */
+function wireCollapse(container, rerender) {
+  container.querySelectorAll('[data-panel-toggle]').forEach((head) => {
+    head.addEventListener('click', () => {
+      const key = head.dataset.panelToggle;
+      const wrap = head.closest('.collapse-wrap');
+      const willOpen = !wrap.classList.contains('open');
+      togglePanel(key);
+      wrap.classList.toggle('open', willOpen);
+      if (willOpen && key === 'trend' && lastRanged.length) {
+        setTimeout(() => wireDashboard(container, lastRanged, lastDaily), 60);
+      }
+    });
+  });
+}
+
+/** 术语悬浮解释（tooltip）+ 点击打开知识卡 */
+function wireGlossary(container, rerender) {
+  let pop = null;
+  const ensurePop = () => {
+    if (!pop) {
+      pop = document.createElement('div');
+      pop.className = 'gloss-pop';
+      pop.setAttribute('role', 'tooltip');
+      document.body.appendChild(pop);
+    }
+    return pop;
+  };
+  const show = (el) => {
+    const t = GLOSSARY[el.dataset.term];
+    if (!t) return;
+    const p = ensurePop();
+    p.textContent = t.short;
+    p.style.display = 'block';
+    const r = el.getBoundingClientRect();
+    const ph = p.offsetHeight || 80;
+    let top = r.top - ph - 8;
+    if (top < 8) top = r.bottom + 8;
+    const left = Math.max(8, Math.min(r.left, window.innerWidth - (p.offsetWidth || 200) - 8));
+    p.style.left = left + 'px';
+    p.style.top = top + 'px';
+  };
+  const hide = () => {
+    if (pop) pop.style.display = 'none';
+  };
+  container.addEventListener('mouseover', (e) => {
+    const el = e.target.closest && e.target.closest('.gloss-term');
+    if (el) show(el);
+  });
+  container.addEventListener('mouseout', (e) => {
+    const el = e.target.closest && e.target.closest('.gloss-term');
+    if (el) hide();
+  });
+  container.addEventListener('focusin', (e) => {
+    const el = e.target.closest && e.target.closest('.gloss-term');
+    if (el) show(el);
+  });
+  container.addEventListener('focusout', (e) => {
+    const el = e.target.closest && e.target.closest('.gloss-term');
+    if (el) hide();
+  });
+  container.addEventListener('click', (e) => {
+    const el = e.target.closest && e.target.closest('.gloss-term');
+    if (!el) return;
+    e.preventDefault();
+    const card = el.closest('.diag-card');
+    const site = card ? card.dataset.site : '';
+    openKnowledgeCard(el.dataset.term, buildTermData(site), rerender);
+  });
+}
+
 function downloadPauseCSV(rows) {
   const csv = pauseListToCSV(rows);
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
@@ -760,18 +1014,22 @@ function openPauseListModal(rows) {
       (r, i) =>
         `<tr><td>${i + 1}</td><td>${esc(r.siteLabel)}</td><td>${esc(r.campaign)}</td><td>${esc(
           r.keyword
-        )}</td><td>${esc(r.adTypeLabel)}</td></tr>`
+        )}</td><td>${esc(r.adTypeLabel)}</td><td>${esc(r.matchTypeLabel)}</td><td class="num">¥${fmtNum(
+          r.cost
+        )}</td><td class="num">${fmtInt(r.clicks)}</td></tr>`
     )
     .join('');
   const body = `
-    <p class="field-tip" style="margin:0 0 10px">以下为诊断命中「高花费无转化」的关键词（关键词级数据）。清单可直接粘贴到<b>领星后台 → 广告 → 批量操作</b>的「暂停/否定关键词」框，或下载 CSV 后在批量模板中导入。</p>
+    <p class="field-tip" style="margin:0 0 10px">以下关键词近 ${rangeLabel()} 高花费无转化（单个关键词花费 ≥ 15 元、订单 0），建议批量暂停。清单可直接粘贴到<b>领星后台 → 广告 → 批量操作</b>的「暂停/否定关键词」框，或下载 CSV 后在批量模板中导入。</p>
     <div class="table-scroll" style="max-height:360px">
       <table class="data-table">
-        <thead><tr><th>#</th><th>站点</th><th>广告活动</th><th>关键词</th><th>广告类型</th></tr></thead>
+        <thead><tr><th>#</th><th>站点</th><th>广告活动</th><th>关键词</th><th>广告类型</th><th>匹配</th><th class="num">花费</th><th class="num">点击</th></tr></thead>
         <tbody>${preview}</tbody>
       </table>
     </div>
-    <div class="field-tip" style="margin-top:8px">共 <b>${rows.length}</b> 个关键词待暂停。复制结果为 TSV（关键词 / 活动 / 类型 / 站点），便于在表格中粘贴；下载为 UTF-8 CSV（含 BOM，Excel 可直接打开）。</div>`;
+    <div class="field-tip" style="margin-top:8px">共 <b>${rows.length}</b> 个关键词待暂停，累计浪费 <b>¥${fmtNum(
+      rows.reduce((s, r) => s + (Number(r.cost) || 0), 0)
+    )}</b>。复制结果为 TSV（关键词 / 活动 / 类型 / 匹配 / 站点），便于在表格中粘贴；下载为 UTF-8 CSV（含 BOM，Excel 可直接打开）。</div>`;
   const m = openModal({
     title: `批量暂停清单（${rows.length} 个关键词）`,
     body,

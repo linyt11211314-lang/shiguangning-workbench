@@ -17,6 +17,7 @@ export const FIELD_DEFS = [
   { key: 'keyword', label: '关键词', required: false, keywords: ['关键词', 'keyword', 'searchterm', 'search term', '客户搜索词', '查询词', '词', '搜索词'] },
   { key: 'adType', label: '广告类型', required: false, keywords: ['广告类型', '类型', 'adtype', 'campaigntype', '广告组合类型', '推广类型'] },
   { key: 'campaign', label: '广告活动', required: false, keywords: ['广告活动', 'campaign', '广告活动名称', '活动', '推广活动', '广告组'] },
+  { key: 'matchType', label: '匹配类型', required: false, keywords: ['匹配类型', '匹配方式', 'matchtype', 'match type', '匹配', '投放匹配', '关键词匹配', 'match'] },
   { key: 'asin', label: 'ASIN', required: false, keywords: ['asin', 'ASIN', '子asin', '商品', '子体'] },
   { key: 'bid', label: '出价', required: false, keywords: ['出价', '竞价', 'bid', '默认竞价', '关键词出价'] },
   { key: 'suggestedBid', label: '建议竞价', required: false, keywords: ['建议竞价', '建议出价', 'suggestedbid', '建议竞价范围', '建议竞价下限', '建议出价范围'] },
@@ -99,6 +100,16 @@ export function normAdType(v) {
   return s || '';
 }
 
+/** 归一化匹配类型：广泛 / 词组 / 精准（兼容 broad/phrase/exact 与中文） */
+export function normMatchType(v) {
+  if (!v) return '';
+  const s = String(v).trim().toLowerCase();
+  if (s.includes('broad') || s.includes('广泛')) return 'broad';
+  if (s.includes('phrase') || s.includes('词组')) return 'phrase';
+  if (s.includes('exact') || s.includes('精准')) return 'exact';
+  return '';
+}
+
 export function normalizeDate(v) {
   if (v === null || v === undefined) return '';
   let s = String(v).replace(/\//g, '-').trim();
@@ -135,10 +146,11 @@ export function buildRecords(rawRows, mapping, defaultSite, importId) {
     const kw = String(get('keyword') || '').trim();
     const camp = String(get('campaign') || '').trim();
     const adType = normAdType(get('adType'));
+    const matchType = normMatchType(get('matchType'));
     const asin = String(get('asin') || '').trim();
     const sugBidRaw = get('suggestedBid');
     const rec = {
-      id: [site, date, kw && `k:${kw}`, camp && `c:${camp}`, adType && `t:${adType}`].filter(Boolean).join('|'),
+      id: [site, date, kw && `k:${kw}`, camp && `c:${camp}`, adType && `t:${adType}`, matchType && `m:${matchType}`].filter(Boolean).join('|'),
       site,
       date,
       cost: coerceNumber(get('cost')),
@@ -149,6 +161,7 @@ export function buildRecords(rawRows, mapping, defaultSite, importId) {
       orders: coerceNumber(get('orders')),
       keyword: kw,
       adType,
+      matchType,
       campaign: camp,
       asin,
       bid: coerceNumber(get('bid')),

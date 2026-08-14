@@ -14,7 +14,7 @@ const PRIORITY_ORDER = { high: 0, mid: 1, low: 2 };
 const PRIO_LABEL = { high: '高', mid: '中', low: '低' };
 
 // 阈值常量
-const MIN_WASTE = 10; // ¥：花费超过此值且 0 转化视为「高花费」
+const PAUSE_MIN_COST = 15; // ¥：关键词级花费超过此值且 0 转化 → 进入「批量暂停清单」（可配置）
 const ACOS_HEALTHY = 35; // 健康线
 const ACOS_GREAT = 25;
 const CTR_LOW = 0.5; // %
@@ -29,6 +29,43 @@ const NOTE_CAMPAIGN =
 function fmtMoney(v) {
   const n = Number(v) || 0;
   return n.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+function fmtIntSafe(v) {
+  return (Number(v) || 0).toLocaleString('zh-CN');
+}
+/** 通俗解释模板（面向完全不懂广告的新手，结合用户数据） */
+function plainExplainFor(ruleKey, m) {
+  const acos = m.acos != null ? m.acos.toFixed(1) : null;
+  const ctr = m.ctr != null ? m.ctr.toFixed(2) : null;
+  const cvr = m.convRate != null ? m.convRate.toFixed(1) : null;
+  switch (ruleKey) {
+    case 'high_spend_no_conv':
+      return `广告花了 ¥${fmtMoney(m.cost)}，但一单都没出。说明广告在"花钱买曝光"，但产品没有成功卖出去。可能是：① 看到广告的人不想买（点击率问题）；② 点进来的人不想买（转化率问题）。`;
+    case 'cost_no_sales':
+      return `广告花了 ¥${fmtMoney(m.cost)}，但广告销售额是 ¥0.00，一单都没出。说明广告在"花钱买曝光"，但产品没卖出去。可能是：① 看到广告的人不想点（点击率问题）；② 点进来的人不想买（转化率问题）。`;
+    case 'cost_no_orders':
+      return `广告花了 ¥${fmtMoney(m.cost)}，产生了 ¥${fmtMoney(m.sales)} 销售额却没有成交订单。可能是订单数据回传延迟，或转化路径异常，建议核对后再判断。`;
+    case 'acos_high':
+      return `ACOS 是 ${acos}%，表示每赚 100 元，广告就花了 ${acos} 元。健康线是 ${ACOS_HEALTHY}%，你的已经超出了，说明广告在"烧钱"，需要优化关键词和出价。`;
+    case 'acos_good':
+      return `ACOS 是 ${acos}%，表示每赚 100 元，广告只花了 ${acos} 元。健康线是 ${ACOS_HEALTHY}%，你的远低于它，说明这条广告在稳定赚钱，可以适度扩量。`;
+    case 'acos_mid':
+      return `ACOS 是 ${acos}%，表示每赚 100 元，广告花了 ${acos} 元。健康线是 ${ACOS_HEALTHY}%，你目前处于健康范围内，可以适当扩量观察。`;
+    case 'bid_low':
+      return `当前出价 $${fmtMoney(m.bid)} 低于系统建议竞价 $${fmtMoney(m.suggestedBid)}。出价偏低会让广告排名靠后、曝光不足，相当于"出价不够、抢不到好位置"。`;
+    case 'ctr_low':
+      return `CTR 是 ${ctr}%，表示 100 人看到广告，只有 ${ctr} 人点击。通常低于 0.5% 说明广告图片或标题不够吸引人，需要优化。`;
+    case 'imp_low':
+      return `曝光只有 ${fmtIntSafe(m.impressions)} 次，说明广告几乎没被展示出来。可能是出价太低或预算不足，导致触达不到买家。`;
+    case 'conv_low':
+      return `CVR 是 ${cvr}%，表示 100 人点进来，只有 ${cvr} 人下单。通常低于 10% 说明产品详情页不够打动买家，需要优化。`;
+    case 'ad_ratio_low':
+      return `广告收入占比只有 ${m.adRatio != null ? m.adRatio.toFixed(1) : '—'}%，说明自然流量没有充分承接广告引流，广告只贡献了一小部分销售额，还有提升空间。`;
+    case 'cost_up_sales_flat':
+      return `近${m.rangeLabel}花费涨了但收入没跟上，说明新增的花费没有带来新增订单，可能存在无效点击或测试广告在拖累。`;
+    default:
+      return '';
+  }
 }
 function siteLabel(s) {
   return s === 'AE' ? '中东站 AE' : s === 'SA' ? '沙特站 SA' : s;
@@ -110,6 +147,7 @@ function buildObjectMetric(grp, site, rangeLabel) {
   const first = grp[0];
   m.key = first.keyword || first.campaign || first.asin || '未知对象';
   m.adType = first.adType || '';
+  m.matchType = first.matchType || '';
   m.bid = first.bid || 0;
   m.suggestedBid = first.suggestedBid || 0;
   m.suggestedBidText = first.suggestedBidText || '';
@@ -135,6 +173,7 @@ function buildSuggestion(o) {
     expected: o.expected || '',
     trigger: o.trigger || '',
     granularityNote: o.granularityNote || null,
+    plainExplain: o.plainExplain || '',
     // 结构化操作目标（用于「领星可粘贴的批量操作清单」导出）
     target: o.target || null,
     pauseAction: !!o.pauseAction,
@@ -155,6 +194,9 @@ function objectSuggestions(site, m, ctx) {
     keyword: m.keyword || '',
     campaign: m.campaign || '',
     adType: m.adType || '',
+    matchType: m.matchType || '',
+    cost: m.cost || 0,
+    clicks: m.clicks || 0,
     kind,
     adTypeLabel: adTypeLabel(m.adType),
   };
@@ -168,7 +210,7 @@ function objectSuggestions(site, m, ctx) {
 
   // 1. 高花费无转化
   if (m.cost > 0 && m.orders === 0) {
-    const high = m.cost >= MIN_WASTE;
+    const high = m.cost >= PAUSE_MIN_COST;
     const newAcos =
       m.campM && m.campM.sales > 0 ? (m.campM.cost - m.cost) / m.campM.sales * 100 : null;
     out.push(
@@ -179,7 +221,8 @@ function objectSuggestions(site, m, ctx) {
         priority: high ? 'high' : 'mid',
         objectLabel: objLabel,
         target,
-        pauseAction: true,
+        pauseAction: high,
+        plainExplain: plainExplainFor('high_spend_no_conv', m),
         problem: `${kindName}「${m.key}」高花费无转化（花费 ¥${fmtMoney(m.cost)} · ${m.orders} 单）`,
         dataSupport: [
           `花费：¥${fmtMoney(m.cost)}${shareTxt}`,
@@ -213,6 +256,7 @@ function objectSuggestions(site, m, ctx) {
         site,
         ruleKey: 'acos_high',
         priority: 'high',
+        plainExplain: plainExplainFor('acos_high', m),
         objectLabel: objLabel,
         target,
         problem: `${kindName}「${m.key}」ACOS 偏高（${m.acos.toFixed(1)}%，超出健康线 ${ACOS_HEALTHY}%）`,
@@ -244,6 +288,7 @@ function objectSuggestions(site, m, ctx) {
         site,
         ruleKey: 'acos_good',
         priority: 'low',
+        plainExplain: plainExplainFor('acos_good', m),
         objectLabel: objLabel,
         target,
         problem: `${kindName}「${m.key}」ACOS 表现优秀（${m.acos.toFixed(1)}%）`,
@@ -275,6 +320,7 @@ function objectSuggestions(site, m, ctx) {
         site,
         ruleKey: 'bid_low',
         priority: 'mid',
+        plainExplain: plainExplainFor('bid_low', m),
         objectLabel: objLabel,
         target,
         problem: `${kindName}「${m.key}」出价 $${fmtMoney(m.bid)} 低于建议竞价 $${fmtMoney(m.suggestedBid)}`,
@@ -309,6 +355,7 @@ function objectSuggestions(site, m, ctx) {
         site,
         ruleKey: 'ctr_low',
         priority: 'mid',
+        plainExplain: plainExplainFor('ctr_low', m),
         objectLabel: objLabel,
         target,
         problem: `${kindName}「${m.key}」点击率偏低（${m.ctr.toFixed(2)}%）`,
@@ -334,6 +381,7 @@ function objectSuggestions(site, m, ctx) {
         site,
         ruleKey: 'imp_low',
         priority: 'low',
+        plainExplain: plainExplainFor('imp_low', m),
         objectLabel: objLabel,
         target,
         problem: `${kindName}「${m.key}」曝光量偏低（${m.impressions} 次）`,
@@ -360,6 +408,7 @@ function objectSuggestions(site, m, ctx) {
         site,
         ruleKey: 'conv_low',
         priority: 'mid',
+        plainExplain: plainExplainFor('conv_low', m),
         objectLabel: objLabel,
         target,
         problem: `${kindName}「${m.key}」转化率偏低（${m.convRate.toFixed(1)}%，约 ${m.orders} 单 / ${m.clicks} 点击）`,
@@ -401,6 +450,7 @@ function siteSuggestions(site, m) {
         site,
         ruleKey: 'acos_high',
         priority: 'high',
+        plainExplain: plainExplainFor('acos_high', m),
         objectLabel: obj,
         problem: `整体 ACOS 偏高（${m.acos.toFixed(1)}%），超出健康线 ${ACOS_HEALTHY}%`,
         dataSupport: [
@@ -431,6 +481,7 @@ function siteSuggestions(site, m) {
         site,
         ruleKey: good ? 'acos_good' : 'acos_mid',
         priority: 'low',
+        plainExplain: plainExplainFor(good ? 'acos_good' : 'acos_mid', m),
         objectLabel: obj,
         problem: `ACOS ${good ? '表现优秀' : '处于健康范围'}（${m.acos.toFixed(1)}%）`,
         dataSupport: [`整体 ACOS：${m.acos.toFixed(1)}%`, `总花费：¥${fmtMoney(m.cost)}`, `总销售额：¥${fmtMoney(m.sales)}`],
@@ -453,6 +504,7 @@ function siteSuggestions(site, m) {
         site,
         ruleKey: 'cost_no_sales',
         priority: 'high',
+        plainExplain: plainExplainFor('cost_no_sales', m),
         objectLabel: obj,
         problem: `有花费但无广告收入（花费 ¥${fmtMoney(m.cost)}）`,
         dataSupport: [
@@ -483,6 +535,7 @@ function siteSuggestions(site, m) {
         site,
         ruleKey: 'cost_no_orders',
         priority: 'mid',
+        plainExplain: plainExplainFor('cost_no_orders', m),
         objectLabel: obj,
         problem: `有花费但无订单转化（订单 0 · 花费 ¥${fmtMoney(m.cost)}）`,
         dataSupport: [`花费：¥${fmtMoney(m.cost)}`, `订单：0`, `广告销售额：¥${fmtMoney(m.sales)}`],
@@ -503,6 +556,7 @@ function siteSuggestions(site, m) {
         site,
         ruleKey: 'ad_ratio_low',
         priority: 'mid',
+        plainExplain: plainExplainFor('ad_ratio_low', m),
         objectLabel: obj,
         problem: `广告收入占比较低（${m.adRatio.toFixed(1)}%，低于建议值 20%）`,
         dataSupport: [
@@ -527,6 +581,7 @@ function siteSuggestions(site, m) {
         site,
         ruleKey: 'ctr_low',
         priority: 'mid',
+        plainExplain: plainExplainFor('ctr_low', m),
         objectLabel: obj,
         problem: `整体点击率偏低（${m.ctr.toFixed(2)}%）`,
         dataSupport: [`CTR：${m.ctr.toFixed(2)}%`, `曝光：${m.impressions} 次`, `点击：${m.clicks} 次`],
@@ -547,6 +602,7 @@ function siteSuggestions(site, m) {
         site,
         ruleKey: 'imp_low',
         priority: 'low',
+        plainExplain: plainExplainFor('imp_low', m),
         objectLabel: obj,
         problem: `曝光量偏低（${m.impressions}）`,
         dataSupport: [`曝光：${m.impressions} 次`, `花费：¥${fmtMoney(m.cost)}`, `点击：${m.clicks} 次`],
@@ -567,6 +623,7 @@ function siteSuggestions(site, m) {
         site,
         ruleKey: 'cost_up_sales_flat',
         priority: 'high',
+        plainExplain: plainExplainFor('cost_up_sales_flat', m),
         objectLabel: obj,
         problem: `近${rl}花费增长但收入未同步增长（花费环比 +${m.costGrowth.toFixed(0)}% · 收入环比 ${m.salesGrowth.toFixed(0)}%）`,
         dataSupport: [
@@ -710,7 +767,7 @@ export function buildPauseList(suggestions = []) {
   for (const s of suggestions) {
     if (!s.pauseAction || !s.target || s.target.kind !== 'keyword') continue;
     const t = s.target;
-    const key = `${t.site}|${t.campaign}|${t.keyword}|${t.adType}`;
+    const key = `${t.site}|${t.campaign}|${t.keyword}|${t.matchType}|${t.adType}`;
     if (seen.has(key)) continue;
     seen.add(key);
     rows.push({
@@ -720,12 +777,24 @@ export function buildPauseList(suggestions = []) {
       keyword: t.keyword || '未命名关键词',
       adType: t.adType || '',
       adTypeLabel: t.adTypeLabel || adTypeLabel(t.adType),
+      matchType: t.matchType || '',
+      matchTypeLabel: matchTypeLabel(t.matchType),
+      cost: t.cost || 0,
+      clicks: t.clicks || 0,
     });
   }
   rows.sort((a, b) =>
     (a.site + a.campaign + a.keyword).localeCompare(b.site + b.campaign + b.keyword, 'zh')
   );
   return rows;
+}
+
+/** 匹配类型中文标签 */
+export function matchTypeLabel(t) {
+  if (t === 'broad') return '广泛匹配';
+  if (t === 'phrase') return '词组匹配';
+  if (t === 'exact') return '精准匹配';
+  return '—';
 }
 
 function csvCell(v) {
@@ -735,16 +804,16 @@ function csvCell(v) {
 
 /** 生成 CSV（领星 / 亚马逊批量模板友好，UTF-8 with BOM 便于 Excel 打开） */
 export function pauseListToCSV(rows = []) {
-  const header = ['站点', '广告活动', '关键词', '广告类型', '建议操作'];
+  const header = ['站点', '广告活动', '关键词', '广告类型', '匹配类型', '建议操作'];
   const lines = rows.map((r) =>
-    [r.siteLabel, r.campaign, r.keyword, r.adTypeLabel, '暂停'].map(csvCell).join(',')
+    [r.siteLabel, r.campaign, r.keyword, r.adTypeLabel, r.matchTypeLabel, '暂停'].map(csvCell).join(',')
   );
   return '﻿' + [header.join(','), ...lines].join('\r\n');
 }
 
-/** 生成 TSV（每行：关键词<TAB>活动<TAB>类型<TAB>站点，便于直接粘贴进领星表格/批量框） */
+/** 生成 TSV（每行：关键词<TAB>活动<TAB>类型<TAB>匹配<TAB>站点，便于直接粘贴进领星表格/批量框） */
 export function pauseListToText(rows = []) {
   return rows
-    .map((r) => [r.keyword, r.campaign, r.adTypeLabel, r.siteLabel].join('\t'))
+    .map((r) => [r.keyword, r.campaign, r.adTypeLabel, r.matchTypeLabel, r.siteLabel].join('\t'))
     .join('\n');
 }

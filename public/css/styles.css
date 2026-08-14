@@ -1697,3 +1697,88 @@ html, body {
 .todo-due-over { color: var(--red); font-weight: 600; }
 .todo-due-none { color: var(--text-faint); }
 
+
+/* ===== 广告诊断 · 新手学堂 / 折叠面板 / 认知卡 ===== */
+
+/* 折叠面板头部内容布局 */
+.collapse-head .ch-title { font-size: 15px; font-weight: 700; color: var(--text); }
+.collapse-head .ch-sub { font-size: 12.5px; color: var(--text-sub); margin-left: 10px; }
+.collapse-head .ch-actions { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.collapse-head .ch-actions .btn { box-shadow: none; }
+.collapse-head .ch-arrow { margin-left: 12px; flex: none; }
+.collapse-head .ch-arrow svg { width: 18px; height: 18px; }
+/* 平滑展开动画（display 切换 + 淡入位移） */
+.collapse-body { display: none; }
+.collapse-wrap.open .collapse-body { display: block; animation: collapseIn .26s ease; }
+@keyframes collapseIn { from { opacity: 0; transform: translateY(-5px); } to { opacity: 1; transform: none; } }
+
+/* 认知水平评估卡 */
+.cog-card { margin-top: 14px; padding: 14px 16px; background: var(--card-soft); border: 1px solid var(--border); border-radius: var(--radius-md); }
+.cog-head { font-size: 14px; font-weight: 600; color: var(--text); }
+.cog-level { color: var(--primary); font-weight: 800; }
+.cog-bar { height: 9px; border-radius: 6px; background: var(--border-strong); overflow: hidden; margin: 9px 0 7px; }
+.cog-bar-fill { height: 100%; border-radius: 6px; background: linear-gradient(90deg, var(--primary), var(--green)); transition: width .4s ease; }
+.cog-meta { font-size: 12.5px; color: var(--text-sub); line-height: 1.5; }
+
+/* 诊断卡：通俗解释 / 可折叠操作 / 影响行 */
+.diag-plain { background: var(--card-soft); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 11px 13px; margin-top: 2px; }
+.diag-plain-title { font-size: 13px; font-weight: 700; color: var(--text); margin-bottom: 5px; }
+.diag-plain-body { font-size: 13px; color: var(--text); line-height: 1.65; }
+.diag-impact-inline { margin-top: 8px; font-size: 12.5px; color: var(--red); line-height: 1.55; font-weight: 600; }
+.diag-ops { margin-top: 10px; border: 1px solid var(--border); border-radius: var(--radius-md); overflow: hidden; }
+.diag-ops-head { display: flex; align-items: center; gap: 7px; padding: 9px 12px; font-size: 13px; font-weight: 600; color: var(--text-sub); cursor: pointer; user-select: none; background: var(--card); }
+.diag-ops-head:hover { background: var(--card-soft); }
+.diag-ops-arrow { display: inline-flex; transition: transform .2s ease; }
+.diag-ops-arrow svg { width: 16px; height: 16px; }
+.diag-ops.open .diag-ops-arrow { transform: rotate(90deg); }
+.diag-ops-body { display: none; padding: 4px 14px 12px; }
+.diag-ops.open .diag-ops-body { display: block; animation: collapseIn .22s ease; }
+.diag-expected-block { margin-top: 8px; font-size: 13px; color: var(--green); line-height: 1.6; font-weight: 500; }
+
+/* 暂停清单底部汇总行 */
+.diag-pause-summary { margin-top: 14px; padding: 11px 14px; background: var(--red-soft); border: 1px solid var(--red); border-radius: var(--radius-md); font-size: 13px; color: var(--text); line-height: 1.6; }
+.diag-pause-summary b { color: var(--red); font-size: 14px; }
+
+/* 行内术语高亮 + 悬浮解释 */
+.gloss-term { color: var(--primary); border-bottom: 1px dashed var(--primary); cursor: help; font-weight: 600; }
+.gloss-term:hover, .gloss-term:focus { background: var(--primary-soft); outline: none; }
+.gloss-pop {
+  position: fixed; z-index: 9999; max-width: 320px; display: none;
+  background: #1f2733; color: #fff; font-size: 12.5px; line-height: 1.6;
+  padding: 9px 12px; border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,.28);
+  pointer-events: none;
+}
+.gloss-pop::after { content: ''; position: absolute; left: 14px; bottom: -6px; border: 6px solid transparent; border-top-color: #1f2733; border-bottom: 0; }
+
+/* 知识卡弹窗 */
+.kc { font-size: 13.5px; line-height: 1.7; color: var(--text); }
+.kc-title { font-size: 16px; font-weight: 800; margin-bottom: 10px; }
+.kc-intro { color: var(--text-sub); margin-bottom: 10px; }
+.kc-formula { background: var(--card-soft); border: 1px solid var(--border); border-radius: 8px; padding: 8px 11px; margin-bottom: 10px; font-weight: 600; }
+.kc-example { color: var(--text-sub); margin-bottom: 12px; }
+.kc-example b { color: var(--primary); }
+.kc-levels { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; }
+.kc-level { font-size: 13px; }
+.kc-your { padding: 9px 11px; border-radius: 8px; background: var(--card-soft); border: 1px solid var(--border); font-weight: 600; margin-bottom: 8px; }
+.kc-your.kc-good { background: var(--green-soft); border-color: var(--green); color: var(--green); }
+.kc-your.kc-bad { background: var(--red-soft); border-color: var(--red); color: var(--red); }
+.kc-target { font-size: 12.5px; color: var(--text-sub); }
+
+/* 知识库面板 */
+.kb { font-size: 13.5px; }
+.kb-section-title { font-size: 13.5px; font-weight: 700; color: var(--text); margin: 14px 0 8px; }
+.kb-section-title:first-child { margin-top: 0; }
+.kb-terms { display: flex; flex-wrap: wrap; gap: 8px; }
+.kb-term {
+  display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px;
+  border: 1px solid var(--border-strong); background: var(--card); border-radius: 10px;
+  font-size: 13px; color: var(--text-sub); cursor: pointer; transition: all .14s ease; font-family: var(--font);
+}
+.kb-term:hover { border-color: var(--primary); color: var(--text); }
+.kb-term.done { border-color: var(--green); background: var(--green-soft); color: var(--green); }
+.kb-resources { margin: 0; padding-left: 20px; color: var(--text-sub); }
+.kb-resources li { margin: 4px 0; }
+.kb-record { padding: 9px 11px; background: var(--card-soft); border-radius: 8px; color: var(--text-sub); font-size: 12.5px; }
+
+/* 诊断卡内「我不懂这个词」按钮微调 */
+.diag-card-actions .btn { box-shadow: none; }

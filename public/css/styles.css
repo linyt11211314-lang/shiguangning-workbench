@@ -69,6 +69,17 @@
   --grad-g1: #F1FBD0; --grad-g2: #CDEF8A; --grad-gfg: #65A30D;
   --grad-b1: #DFF3FE; --grad-b2: #A8DCFA; --grad-bfg: #0284C7;
   --grad-a1: #FFF1D2; --grad-a2: #FFD98F; --grad-afg: #EA8A00;
+
+  /* 侧边导航：深墨绿面板，与白色功能面板形成强对比（明暗模式统一） */
+  --sidebar-grad: linear-gradient(180deg, #1B4134 0%, #102C24 100%);
+  --sidebar-text: #EAF4EE;
+  --sidebar-sub: #A2C1B2;
+  --sidebar-faint: #7FA393;
+  --sidebar-hover: rgba(255, 255, 255, .09);
+  --sidebar-border: rgba(255, 255, 255, .1);
+  --sidebar-active-bg: var(--primary-soft);
+  --sidebar-active-text: var(--primary-deep);
+  --sidebar-ai-bg: rgba(255, 255, 255, .07);
 }
 
 /* ---------- 明暗模式：深色（黑色背景 + 白色卡片） ---------- */
@@ -130,25 +141,11 @@
   --grad-a1: #FFF1D2; --grad-a2: #FFD98F; --grad-afg: #EA8A00;
 }
 
-/* 深色模式：侧栏 / 顶栏保持深色面板，文字用浅色 */
-:root[data-mode="dark"] .sidebar,
-:root[data-mode="dark"] .topbar {
-  color: #E9F1EC;
-}
-:root[data-mode="dark"] .sidebar .logo-sub,
-:root[data-mode="dark"] .sidebar .nav-item,
-:root[data-mode="dark"] .sidebar .ai-status-text,
-:root[data-mode="dark"] .sidebar .version,
-:root[data-mode="dark"] .topbar .topbar-sub {
-  color: #9CABA2;
-}
-:root[data-mode="dark"] .sidebar .nav-item:hover { color: #E9F1EC; background: #22302A; }
-:root[data-mode="dark"] .sidebar .nav-item.active { background: var(--primary-soft); color: var(--primary-deep); }
-:root[data-mode="dark"] .sidebar .ai-status { background: #151B17; border-color: #2A352F; }
-:root[data-mode="dark"] .sidebar .ai-status-text { color: #9CABA2; }
+/* 深色模式：顶栏保持深色面板，文字用浅色（侧栏已统一为深墨绿面板，见 --sidebar-* 变量） */
+:root[data-mode="dark"] .topbar { color: #E9F1EC; }
+:root[data-mode="dark"] .topbar .topbar-sub { color: #9CABA2; }
 
 /* 深色模式白卡细节修正 */
-:root[data-mode="dark"] .sidebar { background: #151B17; border-color: #2A352F; }
 :root[data-mode="dark"] .segmented .seg-item { color: #9CABA2; }
 :root[data-mode="dark"] .segmented .seg-item.active { background: #FFFFFF; color: #22322A; box-shadow: 0 1px 4px rgba(0,0,0,.35); }
 :root[data-mode="dark"] .modal-close { background: #EFF3F0; color: #5F7368; }
@@ -312,19 +309,20 @@ html, body {
 /* ---------- 布局骨架 ---------- */
 .app-shell { display: flex; height: 100vh; overflow: hidden; }
 
-/* ---------- 侧边导航 ---------- */
+/* ---------- 侧边导航（深墨绿面板，与白色功能面板强对比） ---------- */
 .sidebar {
   width: var(--sidebar-w);
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  background: var(--card-soft);
-  border-right: 1px solid var(--border);
+  background: var(--sidebar-grad);
+  border-right: 1px solid var(--sidebar-border);
+  color: var(--sidebar-text);
   padding: 18px 14px 14px;
 }
 
 .sidebar-logo { display: flex; align-items: center; gap: 11px; padding: 6px 10px 20px; cursor: pointer; user-select: none; border-radius: var(--radius-lg); transition: background .14s ease; }
-.sidebar-logo:hover { background: var(--hover-bg); }
+.sidebar-logo:hover { background: var(--sidebar-hover); }
 
 .logo-mark {
   width: 40px; height: 40px; border-radius: 13px;
@@ -334,22 +332,22 @@ html, body {
   border: 1px solid var(--primary-border);
 }
 
-.logo-name { font-size: 17.5px; font-weight: 700; letter-spacing: .5px; }
-.logo-sub { font-size: 11.5px; color: var(--text-sub); margin-top: 1px; letter-spacing: .3px; }
+.logo-name { font-size: 17.5px; font-weight: 700; letter-spacing: .5px; color: var(--sidebar-text); }
+.logo-sub { font-size: 11.5px; color: var(--sidebar-sub); margin-top: 1px; letter-spacing: .3px; }
 
 .sidebar-nav { flex: 1; display: flex; flex-direction: column; gap: 4px; overflow-y: auto; }
 
 .nav-item {
   display: flex; align-items: center; gap: 11px;
   padding: 10px 12px; border-radius: var(--radius-md);
-  color: var(--text-sub); font-size: 14.5px; font-weight: 500;
+  color: var(--sidebar-sub); font-size: 14.5px; font-weight: 500;
   cursor: pointer; user-select: none; border: 1px solid transparent;
   transition: background .16s ease, color .16s ease;
 }
-.nav-item:hover { background: var(--hover-bg); color: var(--text); }
+.nav-item:hover { background: var(--sidebar-hover); color: var(--sidebar-text); }
 .nav-item.active {
-  background: var(--primary-soft); color: var(--primary-deep);
-  border-color: var(--primary-border); font-weight: 600;
+  background: var(--sidebar-active-bg); color: var(--sidebar-active-text);
+  border-color: rgba(255, 255, 255, .28); font-weight: 600;
 }
 .nav-item .nav-icon { width: 20px; height: 20px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
 .nav-item .nav-icon svg { width: 19px; height: 19px; stroke: currentColor; }
@@ -359,20 +357,20 @@ html, body {
   padding: 1px 8px; min-width: 20px; text-align: center;
 }
 
-.sidebar-footer { padding: 12px 10px 0; border-top: 1px solid var(--border); margin-top: 10px; }
+.sidebar-footer { padding: 12px 10px 0; border-top: 1px solid var(--sidebar-border); margin-top: 10px; }
 
 .ai-status {
   display: flex; align-items: center; gap: 7px;
-  font-size: 12.5px; color: var(--text-sub);
-  background: var(--card); border: 1px solid var(--border);
+  font-size: 12.5px; color: var(--sidebar-sub);
+  background: var(--sidebar-ai-bg); border: 1px solid var(--sidebar-border);
   border-radius: 11px; padding: 8px 10px; margin-bottom: 10px;
 }
-.ai-status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-faint); flex-shrink: 0; }
-.ai-status.on .ai-status-dot { background: var(--green); box-shadow: 0 0 0 3px var(--green-soft); }
-.ai-status.off .ai-status-dot { background: var(--red); box-shadow: 0 0 0 3px var(--red-soft); }
+.ai-status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--sidebar-faint); flex-shrink: 0; }
+.ai-status.on .ai-status-dot { background: var(--green); box-shadow: 0 0 0 3px rgba(63, 217, 139, .3); }
+.ai-status.off .ai-status-dot { background: var(--red); box-shadow: 0 0 0 3px rgba(255, 138, 138, .3); }
 .ai-status-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-.version { font-size: 11.5px; color: var(--text-faint); text-align: center; }
+.version { font-size: 11.5px; color: var(--sidebar-faint); text-align: center; }
 
 /* ---------- 主区域 ---------- */
 .main { flex: 1; display: flex; flex-direction: column; min-width: 0; }

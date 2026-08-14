@@ -59,6 +59,8 @@ const PATHS = {
   help: '<circle cx="12" cy="12" r="10"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3"/><path d="M12 17h.01"/>',
   brain: '<path d="M12 5a3 3 0 0 0-3 3 3 3 0 0 0-1 5.8V16a3 3 0 0 0 4 2.8A3 3 0 0 0 16 16v-.2A3 3 0 0 0 15 8a3 3 0 0 0-3-3z"/><path d="M12 5v14"/>',
   xCircle: '<circle cx="12" cy="12" r="9"/><path d="M15 9l-6 6M9 9l6 6"/>',
+  analytics: '<rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M7.5 16v-4M12 16V8.5M16.5 16v-2.5"/>',
+  sheet: '<rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M3 9.5h18M3 15h18M9 4v16M15 4v16"/>',
 };
 
 export function icon(name, cls = '') {

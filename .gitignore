@@ -14,3 +14,11 @@ Thumbs.db
 # 本地环境
 .env
 .env.local
+
+# 本地调试脚本与数据导出（可能含业务/个人隐私数据，禁止入库）
+run.mjs
+excel_dump.txt
+*.xlsx
+*.xls
+*.csv
+!public/vendor/*.js

@@ -15,11 +15,13 @@ import { render as renderSettings } from './pages/settings.js';
 import { render as renderCommission } from './pages/commission.js';
 import { render as renderSchedule } from './pages/schedule.js';
 import { render as renderAds } from './pages/ads.js';
+import { render as renderAnalysis } from './pages/analysis.js';
 
 const NAV = [
   { id: 'library', label: '选品库', icon: 'box' },
   { id: 'listing', label: 'AI Listing 工坊', icon: 'sparkles' },
   { id: 'ads', label: '广告诊断', icon: 'target' },
+  { id: 'analysis', label: '数据分析', icon: 'analytics' },
   { id: 'commission', label: '我的提成预估', icon: 'chart' },
   { id: 'schedule', label: '日程计划', icon: 'calendar' },
   { id: 'settings', label: '设置', icon: 'settings' },
@@ -32,6 +34,7 @@ const TITLES = {
   commission: { title: '我的提成预估', sub: '按昨天以前的完整数据推算提成' },
   schedule: { title: '日程计划', sub: '待办与计划时间管理' },
   ads: { title: '广告诊断', sub: '领星广告数据导入与诊断' },
+  analysis: { title: '数据分析', sub: '领星数据 → 月度品牌产品分析报表' },
   settings: { title: '设置', sub: '外观、AI 服务与偏好' },
 };
 
@@ -39,7 +42,7 @@ let currentRoute = 'library';
 const ROUTE_KEY = 'sgn.route';
 
 function pageOf(route) {
-  if (route === 'home' || route === 'library' || route === 'settings' || route === 'commission' || route === 'schedule' || route === 'ads') return route;
+  if (route === 'home' || route === 'library' || route === 'settings' || route === 'commission' || route === 'schedule' || route === 'ads' || route === 'analysis') return route;
   if (route.startsWith('listing')) return 'listing';
   return 'home';
 }
@@ -114,6 +117,7 @@ function renderPage() {
   else if (page === 'commission') renderCommission(container, ctx);
   else if (page === 'schedule') renderSchedule(container, ctx);
   else if (page === 'ads') renderAds(container, ctx);
+  else if (page === 'analysis') renderAnalysis(container, ctx);
   else if (page === 'settings') renderSettings(container, ctx);
 }
 

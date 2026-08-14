@@ -15,6 +15,7 @@ export function prepRows(rows) {
     shop: String(r['店铺'] ?? '').trim(),
     ym: (String(r['创建时间'] ?? '').match(/^(\d{4}-\d{2})/) || [])[1] || '',
     cat: firstNonEmpty(r['三级分类'], r['二级分类'], r['一级分类']),
+    bigRank: String(r['大类排名'] ?? '').trim(),
     qty: num(r['销量']),
     qty30: num(r['30天销量']),
     sales: num(r['销售额']),
@@ -25,6 +26,20 @@ export function prepRows(rows) {
     marginRate: num(r['订单毛利率']),
     outOfStock: String(r['断货时间'] ?? '').trim() !== '',
   }));
+}
+
+/**
+ * 从「大类排名」提取类目名：冒号（全角/半角）前的字段
+ * 'Home：256' → 'Home'；'Toys & Games: 10' → 'Toys & Games'；无冒号/纯数字/空 → ''
+ */
+export function extractCat(bigRank) {
+  const s = String(bigRank ?? '').trim();
+  if (!s) return '';
+  const i = s.search(/[：:]/);
+  if (i <= 0) return ''; // 无冒号或冒号在首位（视为纯排名）
+  const head = s.slice(0, i).trim();
+  // 冒号前必须含字母（类目名），否则视为排名串
+  return /[A-Za-z\u4e00-\u9fa5]/.test(head) ? head : '';
 }
 
 /** 第一个非空值 */
@@ -84,7 +99,8 @@ export const MONTHLY_ROWS = 9;
  *   summary: [string, string, string]
  * }}
  */
-export function computeOverview(prepped) {
+export function computeOverview(prepped, allowedSkuSet = null) {
+  const rows = allowedSkuSet ? prepped.filter((r) => allowedSkuSet.has(r.sku)) : prepped;
   const skus = new Set();
   let totalQty = 0;
   let qty30 = 0;
@@ -95,7 +111,7 @@ export function computeOverview(prepped) {
   const bySkuProfit = new Map(); // sku -> 毛利润合计
   const monthlyMap = new Map(); // ym -> { skuSet, qty, qty30, sales, profit, refundQty, adSpend }
 
-  for (const r of prepped) {
+  for (const r of rows) {
     if (r.sku) skus.add(r.sku);
     totalQty += r.qty;
     qty30 += r.qty30;
@@ -190,12 +206,13 @@ function adviceForRefund(r) {
  *   topAdvice:   string
  * }}
  */
-export function computeCases(prepped, skuNameMap = {}) {
+export function computeCases(prepped, skuNameMap = {}, allowedSkuSet = null) {
+  const rows = allowedSkuSet ? prepped.filter((r) => allowedSkuSet.has(r.sku)) : prepped;
   const name = (sku) => (skuNameMap[sku] || '').trim();
 
   // 按 SKU 聚合（同 SKU 多行取合计）
   const bySku = new Map();
-  for (const r of prepped) {
+  for (const r of rows) {
     if (!r.sku) continue;
     let a = bySku.get(r.sku);
     if (!a) {
@@ -257,31 +274,29 @@ export function computeCases(prepped, skuNameMap = {}) {
 
 /* ===================== 全店铺全SKU类目汇总 ===================== */
 
+/** 类目汇总数据行数（模板 A4:A24 固定 21 行；图表引用 A4:A23 前 20 行） */
+export const CATEGORY_ROWS = 21;
+const CATEGORY_TOP = CATEGORY_ROWS - 1; // 前 20 个类目 + 第 21 行「未识别类目」
+
 /**
- * 计算类目汇总补丁（行数与模板类目列表严格一致，保证图表引用不错位）
+ * 计算类目汇总（类目名从「大类排名」冒号前字段提取，动态 TOP20 + 未识别兜底）
  * @param {Object[]} prepped
- * @param {string[]} tplCats 模板 A4:A24 的类目名（21 个，含「未识别类目」）
  * @returns {Array<{ cat:string, skuCount:number, qty:number, qty30:number, sales:number, profit:number, margin:number, refundQty:number, refundRate:number, adSpend:number }>}
  */
-export function computeCategory(prepped, tplCats) {
-  const cats = tplCats.length ? tplCats : ['未识别类目'];
-  const aggs = cats.map(() => ({ skuCount: 0, qty: 0, qty30: 0, sales: 0, profit: 0, refundQty: 0, adSpend: 0 }));
+export function computeCategory(prepped) {
+  const agg = new Map(); // 类目名 -> 聚合
+  const getAgg = (cat) => {
+    let a = agg.get(cat);
+    if (!a) {
+      a = { skuCount: 0, qty: 0, qty30: 0, sales: 0, profit: 0, refundQty: 0, adSpend: 0 };
+      agg.set(cat, a);
+    }
+    return a;
+  };
 
   for (const r of prepped) {
-    let idx = -1;
-    if (r.cat) {
-      idx = cats.findIndex((c) => catMatch(r.cat, c));
-      // 「未识别类目」永远兜底
-      if (idx < 0) {
-        const un = cats.findIndex((c) => normCat(c) === '未识别类目');
-        if (un >= 0) idx = un;
-      }
-    } else {
-      const un = cats.findIndex((c) => normCat(c) === '未识别类目');
-      if (un >= 0) idx = un;
-    }
-    if (idx < 0) idx = 0;
-    const a = aggs[idx];
+    const cat = extractCat(r.bigRank) || '未识别类目';
+    const a = getAgg(cat);
     a.skuCount += 1;
     a.qty += r.qty;
     a.qty30 += r.qty30;
@@ -291,8 +306,34 @@ export function computeCategory(prepped, tplCats) {
     a.adSpend += r.adSpend;
   }
 
-  return aggs.map((a, i) => ({
-    cat: cats[i],
+  // 类目按行数降序，未识别类目永远垫底（第 21 行）
+  const entries = [...agg.entries()].sort((x, y) => {
+    if (x[0] === '未识别类目' && y[0] !== '未识别类目') return 1;
+    if (y[0] === '未识别类目' && x[0] !== '未识别类目') return -1;
+    return y[1].skuCount - x[1].skuCount;
+  });
+
+  const rows = entries.slice(0, CATEGORY_TOP);
+  // 未识别类目 = 数据里叫"未识别类目"的 + 超出 TOP20 的类目
+  const unrec = agg.get('未识别类目') || { skuCount: 0, qty: 0, qty30: 0, sales: 0, profit: 0, refundQty: 0, adSpend: 0 };
+  for (const [cat, a] of entries.slice(CATEGORY_TOP)) {
+    if (cat === '未识别类目') continue;
+    unrec.skuCount += a.skuCount;
+    unrec.qty += a.qty;
+    unrec.qty30 += a.qty30;
+    unrec.sales += a.sales;
+    unrec.profit += a.profit;
+    unrec.refundQty += a.refundQty;
+    unrec.adSpend += a.adSpend;
+  }
+  rows.push(['未识别类目', unrec]);
+
+  // 固定输出 CATEGORY_ROWS 行：不足的用空行补齐（覆盖模板残留旧值）
+  const empty = { skuCount: 0, qty: 0, qty30: 0, sales: 0, profit: 0, refundQty: 0, adSpend: 0 };
+  while (rows.length < CATEGORY_ROWS) rows.push(['', empty]);
+
+  return rows.map(([cat, a]) => ({
+    cat,
     skuCount: a.skuCount,
     qty: a.qty,
     qty30: a.qty30,
@@ -312,7 +353,7 @@ export function categorySummary(catRows) {
     .filter((r) => normCat(r.cat) !== '未识别类目' && r.qty > 0)
     .sort((a, b) => b.profit - a.profit);
   if (!ranked.length) {
-    return '本期数据未提供可识别类目，请在上传数据中补充分类列以生成类目汇总';
+    return '本期数据大类排名缺失，无法识别类目，请检查「大类排名」列';
   }
   const top = ranked[0];
   return `核心依靠${top.cat}品类创造利润`;

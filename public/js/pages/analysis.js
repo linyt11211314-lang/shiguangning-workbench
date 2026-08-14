@@ -18,9 +18,13 @@ import {
 } from '../services/reportTemplate.js';
 import {
   ACCEPT,
+  PRODUCT_ACCEPT,
   SLOW_ROWS,
   SKU_HEADER,
+  PRODUCT_LIMIT,
+  productLimitMessage,
   readSourceFile,
+  readProductSheet,
   autoMap,
   buildRows,
   buildOverview,
@@ -49,6 +53,7 @@ const state = {
   mapping: null, // { map, matched, unmatched, skuCol }
   objRows: null,
   overview: null,
+  product: null, // { fileName, sheetName, skuCount, nameCount, skuList, nameMap }
   busy: false,
   progress: 0,
   status: '就绪',
@@ -141,6 +146,7 @@ function paint() {
     <div class="an-statusbar" data-status-bar></div>
     <input type="file" accept="${TEMPLATE_ACCEPT}" hidden data-tpl-input>
     <input type="file" accept="${ACCEPT}" hidden data-src-input>
+    <input type="file" accept="${PRODUCT_ACCEPT}" hidden data-product-input>
   `;
   paintStatus();
   bind();
@@ -215,6 +221,7 @@ function templateCardHTML() {
         </div>
         <span class="topbar-spacer"></span>
         <div class="an-head-actions">
+          <button class="btn btn-soft btn-sm" data-act="product">${icon('upload')} 上传产品表现</button>
           <button class="btn btn-ghost btn-sm" data-act="tpl">${icon('refresh')} 更换模板</button>
           <button class="btn btn-danger-soft btn-sm" data-act="tpl-del">${icon('trash')} 删除模板</button>
         </div>
@@ -226,11 +233,55 @@ function templateCardHTML() {
         <div class="an-meta-item"><span class="an-meta-l">数据源列数</span><span class="an-meta-v">${(t.headers || []).length} 列</span></div>
       </div>
       <div class="an-sheets">${sheets}</div>
+      ${productBlockHTML()}
       <div class="field-tip" style="margin-top:12px">
         每月更新只需替换「${esc(DATA_SHEET)}」的数据：产品表现的 VLOOKUP、概况汇总、案例分析 Top5、各维度关系表的
         4 个数据透视表、类目汇总，都会在 Excel 打开时自动重算刷新。
       </div>
     </div>`;
+}
+
+/* ---------- 产品表现（当月 SKU 清单） ---------- */
+function productBlockHTML() {
+  const p = state.product;
+  if (!p) {
+    return `
+      <div class="an-product-empty">
+        <span class="an-product-tip">${icon('list')} 概况与案例分析按「产品表现」清单分析：可上传当月产品表现表（含 SKU 列即可），
+        未上传时按模板内产品表现清单分析。清单每月变化时请重新上传。</span>
+        <button class="btn btn-soft btn-sm" data-act="product">${icon('upload')} 上传产品表现</button>
+      </div>`;
+  }
+  const matchInfo = state.objRows && state.objRows.length
+    ? matchedProductCount(p.skuList)
+    : null;
+  return `
+    <div class="an-product">
+      <div class="an-product-head">
+        <span class="an-product-name">${icon('sheet')} ${esc(p.fileName)}</span>
+        <span class="an-product-badge">当月清单</span>
+      </div>
+      <div class="an-product-meta">
+        <span>SKU 数：<b>${fmtInt(p.skuCount)}</b></span>
+        <span>品名：<b>${fmtInt(p.nameCount)}</b> 个</span>
+        ${matchInfo != null ? `<span>与上传数据匹配：<b>${fmtInt(matchInfo)}</b> 个 SKU</span>` : ''}
+      </div>
+      <div class="an-product-actions">
+        <button class="btn btn-ghost btn-sm" data-act="product">${icon('refresh')} 重新上传</button>
+        <button class="btn btn-ghost btn-sm" data-act="product-clear">${icon('x')} 移除</button>
+      </div>
+      <div class="field-tip">产品表现表仅需含 SKU 列（MSKU / SKU / AE sku）；系统会识别品名列（产品名称）用于案例分析。上传后报告中的产品表现 sheet 将按本月清单重建。</div>
+    </div>`;
+}
+
+/** 清单中与上传数据匹配的 SKU 数 */
+function matchedProductCount(skuList) {
+  const set = new Set(skuList || []);
+  let hit = 0;
+  for (const r of state.objRows || []) {
+    if (set.has(String(r[SKU_HEADER] || '').trim())) hit += 1;
+  }
+  return hit;
 }
 
 /* ---------- 数据概览 ---------- */
@@ -345,6 +396,7 @@ function historyCardHTML() {
 function bind() {
   const tplInput = rootEl.querySelector('[data-tpl-input]');
   const srcInput = rootEl.querySelector('[data-src-input]');
+  const productInput = rootEl.querySelector('[data-product-input]');
 
   rootEl.querySelectorAll('[data-act]').forEach((el) => {
     el.addEventListener('click', () => {
@@ -360,7 +412,18 @@ function bind() {
       else if (act === 'tpl-del') doDeleteTemplate();
       else if (act === 'map') openMappingModal();
       else if (act === 'preview') openPreviewModal();
-      else if (act === 'src-clear') {
+      else if (act === 'product') {
+        if (!state.tpl) {
+          toastError('请先加载报表模板');
+          return;
+        }
+        productInput.click();
+      } else if (act === 'product-clear') {
+        state.product = null;
+        setStatus('已移除产品表现清单，概况/案例将按模板内清单分析', 'idle', 0);
+        paint();
+        toastInfo('已移除产品表现清单');
+      } else if (act === 'src-clear') {
         state.source = null;
         state.mapping = null;
         state.objRows = null;
@@ -387,6 +450,11 @@ function bind() {
     const f = e.target.files && e.target.files[0];
     e.target.value = '';
     if (f) doUploadSource(f);
+  });
+  productInput.addEventListener('change', (e) => {
+    const f = e.target.files && e.target.files[0];
+    e.target.value = '';
+    if (f) doUploadProduct(f);
   });
 }
 
@@ -463,6 +531,7 @@ function doDeleteTemplate() {
         state.mapping = null;
         state.objRows = null;
         state.overview = null;
+        state.product = null;
         setStatus('模板已删除', 'idle', 0);
         paint();
         toastSuccess('模板已删除');
@@ -529,6 +598,39 @@ function finishSource() {
     toastInfo(`数据量较大（${fmtInt(state.objRows.length)} 行），生成报告耗时会稍长，请勿关闭页面`);
   } else {
     toastSuccess(`已解析 ${fmtInt(state.objRows.length)} 行数据，可以生成报告了`);
+  }
+}
+
+/** 上传产品表现（当月 SKU 清单） */
+async function doUploadProduct(file) {
+  state.busy = true;
+  setStatus(`正在解析产品表现「${file.name}」…`, 'work', 20);
+  paint();
+  try {
+    const p = await readProductSheet(file);
+    if (p.skuCount > PRODUCT_LIMIT) {
+      state.busy = false;
+      setStatus('产品表现 SKU 过多', 'err', 0);
+      paint();
+      toastError(productLimitMessage());
+      return;
+    }
+    state.product = p;
+    state.busy = false;
+
+    const hit = state.objRows && state.objRows.length ? matchedProductCount(p.skuList) : null;
+    setStatus(
+      `产品表现已就绪：${fmtInt(p.skuCount)} 个 SKU${hit != null ? `（${fmtInt(hit)} 个与上传数据匹配）` : ''}${hit === 0 ? '，注意数据中没有匹配 SKU' : ''}`,
+      'ok',
+      100
+    );
+    paint();
+    toastSuccess(`产品表现已上传：${p.fileName}（${fmtInt(p.skuCount)} 个 SKU）`);
+  } catch (err) {
+    state.busy = false;
+    setStatus(`产品表现解析失败：${err.message}`, 'err', 0);
+    paint();
+    toastError(err.message || '产品表现解析失败');
   }
 }
 
@@ -681,6 +783,9 @@ async function doGenerate() {
       templateBlob: tplRec.data,
       headers: state.tpl.headers || [],
       rows: state.objRows,
+      product: state.product
+        ? { skuList: state.product.skuList, nameMap: state.product.nameMap }
+        : null,
       onProgress: ({ pct, text }) => setStatus(text, 'work', pct),
     });
 
@@ -701,7 +806,12 @@ async function doGenerate() {
     const sync = res.patched && (res.patched.overview || res.patched.cases || res.patched.category)
       ? '，已同步 概况/案例分析/类目汇总'
       : '';
-    setStatus(`报告已生成并开始下载：${fileName} · ${fmtInt(res.rowCount)} 行数据${sync}${extra}`, 'ok', 100);
+    const prodTxt = res.productUsed
+      ? `，产品表现已按上传清单重建（${fmtInt(res.productSkuCount)} 个 SKU）`
+      : state.product
+        ? '（产品表现重建失败，按模板原清单）'
+        : '';
+    setStatus(`报告已生成并开始下载：${fileName} · ${fmtInt(res.rowCount)} 行数据${sync}${prodTxt}${extra}`, 'ok', 100);
     paint();
     toastSuccess(`报告已生成：${fileName}`);
   } catch (err) {

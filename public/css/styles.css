@@ -1901,3 +1901,30 @@ html, body {
   .an-actions .btn { flex: 1 1 auto; justify-content: center; }
   .an-map-head span:last-child, .an-map-row .input { width: 150px; }
 }
+
+/* ===== 数据分析 · 产品表现（当月 SKU 清单） ===== */
+.an-product-empty {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  margin-top: 12px; padding: 11px 14px;
+  background: var(--primary-soft); border: 1px dashed var(--primary-border);
+  border-radius: var(--radius-md);
+}
+.an-product-tip { flex: 1 1 260px; font-size: 12.5px; color: var(--text-sub); line-height: 1.6; display: flex; gap: 7px; align-items: flex-start; }
+.an-product-tip svg { width: 15px; height: 15px; flex: none; margin-top: 2px; stroke: var(--primary-deep); }
+.an-product {
+  margin-top: 12px; padding: 13px 15px;
+  background: var(--card-soft); border: 1px solid var(--green);
+  border-radius: var(--radius-md);
+}
+.an-product-head { display: flex; align-items: center; gap: 9px; }
+.an-product-name { display: flex; align-items: center; gap: 7px; font-size: 13.5px; font-weight: 700; color: var(--text); }
+.an-product-name svg { width: 16px; height: 16px; stroke: var(--green); }
+.an-product-badge {
+  font-size: 11px; font-weight: 700; color: var(--green);
+  background: var(--green-soft); border: 1px solid var(--green);
+  border-radius: 20px; padding: 2px 9px;
+}
+.an-product-meta { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 9px; font-size: 12.5px; color: var(--text-sub); }
+.an-product-meta b { color: var(--text); }
+.an-product-actions { display: flex; gap: 8px; margin-top: 10px; }
+.an-product-actions .btn { box-shadow: none; }

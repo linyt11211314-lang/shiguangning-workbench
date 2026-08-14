@@ -113,9 +113,10 @@ export async function parseSharedStrings(zip) {
 
 /** 解析指定 Sheet 的 A/B 两列文本（SKU → 品名），兼容共享字符串 / inlineStr / 直接值 */
 export async function parseColsAB(zip, path, shared, minRow = 1, maxRow = 100000) {
-  if (!path || !zip.file(path)) return {};
+  if (!path || !zip.file(path)) return { map: {}, skuList: [] };
   const xml = await zip.file(path).async('string');
   const map = {};
+  const skuList = [];
   for (const rm of xml.matchAll(/<row r="(\d+)"[^>]*>([\s\S]*?)<\/row>/g)) {
     const r = Number(rm[1]);
     if (r < minRow || r > maxRow) continue;
@@ -136,8 +137,9 @@ export async function parseColsAB(zip, path, shared, minRow = 1, maxRow = 100000
       vals[L] = unescapeXml(val);
     }
     if (vals.A && vals.B) map[vals.A] = vals.B;
+    if (vals.A) skuList.push(vals.A);
   }
-  return map;
+  return { map, skuList };
 }
 
 /** 解析 Sheet 单列文本列表（如类目汇总 A4:A24） */
@@ -166,6 +168,71 @@ function rangeRefs(from, to, col) {
   const out = [];
   for (let r = from; r <= to; r++) out.push(`${col}${r}`);
   return out;
+}
+
+/**
+ * 产品表现 sheet 动态重建（上传了当月产品表现表时）
+ * 保留 row1（标题）/ row2（表头），数据行按新 SKU 清单重建：
+ *   A=SKU、B=品名（inlineStr，样式沿用模板）、C=空（DISPIMG 图片无法从普通表移植）、
+ *   D~P=复制模板第 3 行公式并把本表相对行号替换为新行号（P 列共享公式展开为独立公式）
+ * @returns {Promise<{ endRow: number }>} endRow = 最后一行行号
+ */
+export async function rebuildProductSheet(zip, path, product) {
+  let s2 = await zip.file(path).async('string');
+  const row1 = s2.match(/<row r="1"[^>]*>[\s\S]*?<\/row>/);
+  const row2 = s2.match(/<row r="2"[^>]*>[\s\S]*?<\/row>/);
+  const row3 = s2.match(/<row r="3"[^>]*>[\s\S]*?<\/row>/);
+  if (!row1 || !row2 || !row3) throw new Error('产品表现 sheet 结构异常，无法重建');
+  const rowAttrs = (row3[0].match(/<row r="3"([^>]*)>/) || [])[1] || '';
+
+  // 从 row3 提取每列：样式 + 公式体（含 &quot; 实体原样）
+  const colDefs = {};
+  for (const cm of row3[0].matchAll(/<c r="([A-P])\d+"([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/g)) {
+    const L = cm[1];
+    const attrs = cm[2] || '';
+    const inner = cm[3] || '';
+    const sM = attrs.match(/\bs="(\d+)"/);
+    const fM = inner.match(/<f[^>]*>([\s\S]*?)<\/f>/);
+    colDefs[L] = { style: sM ? sM[1] : null, formula: fM ? fM[1] : null };
+  }
+
+  // 公式行号替换：$A3 → $A{r}、O3 → O{r}（绝对引用 $A$1 / $V$8601 不受影响）
+  const relink = (formula, r) =>
+    String(formula).replace(/\$?[A-P](\d+)/g, (m, d) => m.slice(0, -d.length) + r);
+
+  const skuList = (product && product.skuList) || [];
+  const nameMap = (product && product.nameMap) || {};
+  const rows = [];
+  for (let i = 0; i < skuList.length; i++) {
+    const r = i + 3;
+    const sku = String(skuList[i] || '').trim();
+    const nm = String(nameMap[sku] || '').trim();
+    let cells = '';
+    cells += sku ? `<c r="A${r}" s="${colDefs.A.style}" t="inlineStr"><is><t xml:space="preserve">${xmlEsc(sku)}</t></is></c>` : `<c r="A${r}" s="${colDefs.A.style}"/>`;
+    cells += nm ? `<c r="B${r}" s="${colDefs.B.style}" t="inlineStr"><is><t xml:space="preserve">${xmlEsc(nm)}</t></is></c>` : `<c r="B${r}" s="${colDefs.B.style}"/>`;
+    cells += `<c r="C${r}" s="${colDefs.C.style}"/>`;
+    for (const L of ['D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P']) {
+      const d = colDefs[L];
+      const st = d && d.style ? ` s="${d.style}"` : '';
+      if (d && d.formula) cells += `<c r="${L}${r}"${st}><f>${relink(d.formula, r)}</f></c>`;
+      else cells += `<c r="${L}${r}"${st}/>`;
+    }
+    rows.push(`<row r="${r}"${rowAttrs}>${cells}</row>`);
+  }
+  const body = `${row1[0]}${row2[0]}${rows.join('')}`;
+
+  if (/<sheetData\s*\/>/.test(s2)) s2 = s2.replace(/<sheetData\s*\/>/, `<sheetData>${body}</sheetData>`);
+  else s2 = s2.replace(/<sheetData[^>]*>[\s\S]*?<\/sheetData>/, `<sheetData>${body}</sheetData>`);
+
+  const endRow = skuList.length + 2;
+  s2 = s2.replace(/<dimension[^>]*\/>/, `<dimension ref="A1:P${endRow}"/>`);
+  if (/<autoFilter[^>]*\/>/.test(s2)) {
+    s2 = s2.replace(/<autoFilter[^>]*\/>/, `<autoFilter ref="A2:P${endRow}" xmlns:etc="http://www.wps.cn/officeDocument/2017/etCustomData" etc:filterBottomFollowUsedRange="0"/>`);
+  } else {
+    s2 = s2.replace(/<autoFilter[^>]*ref="[^"]*"/, `<autoFilter ref="A2:P${endRow}"`);
+  }
+  zip.file(path, s2);
+  return { endRow };
 }
 
 /** 打 5 行案例块补丁（A~H），空行清空 */
@@ -264,10 +331,11 @@ function cellXML(ref, value, colInfo) {
  * @param {Blob|ArrayBuffer} opt.templateBlob 模板文件
  * @param {string[]} opt.headers 模板「领星数据源」表头（顺序与列一致）
  * @param {Object[]} opt.rows 数据行（键为模板表头）
+ * @param {Object} [opt.product] 当月产品表现清单 { skuList: string[], nameMap: Object<string,string> }
  * @param {(p: { pct: number, text: string }) => void} [opt.onProgress]
- * @returns {Promise<{ blob: Blob, rowCount: number, dimension: string, lookupEnd: number, expanded: boolean, pivotCount: number }>}
+ * @returns {Promise<{ blob: Blob, data: ArrayBuffer, rowCount: number, dimension: string, lookupEnd: number, expanded: boolean, pivotCount: number, patched: Object, productUsed: boolean, productSkuCount: number }>}
  */
-export async function generateReport({ templateBlob, headers, rows, onProgress }) {
+export async function generateReport({ templateBlob, headers, rows, product: productOpt, onProgress }) {
   const Z = ensureJSZip();
   const say = (pct, text) => {
     if (typeof onProgress === 'function') onProgress({ pct, text });
@@ -368,9 +436,35 @@ export async function generateReport({ templateBlob, headers, rows, onProgress }
   }
   zip.file(dsPath, sheet);
 
+  // ===== 产品表现 sheet 重建（上传了当月产品表现表时） =====
+  const product = productOpt && productOpt.skuList && productOpt.skuList.length ? productOpt : null;
+  let productUsed = false;
+  let perfEnd = null;
+  if (product) {
+    const perfPath = sheetPath('产品表现');
+    if (perfPath && zip.file(perfPath)) {
+      try {
+        say(71, `正在按上传清单重建产品表现（${product.skuList.length} 个 SKU）…`);
+        const r = await rebuildProductSheet(zip, perfPath, product);
+        perfEnd = r.endRow;
+        productUsed = true;
+        // 同步透视缓存源（产品表现!A2:P{旧} → 新行数）；definedNames 统一在下方 wbMod 阶段处理
+        const cacheFiles2 = Object.keys(zip.files).filter((n) => /^xl\/pivotCache\/pivotCacheDefinition\d*\.xml$/.test(n));
+        for (const cf of cacheFiles2) {
+          let p = await zip.file(cf).async('string');
+          p = p.replace(/(<worksheetSource[^>]*ref="A2:P)\d+(")/, `$1${perfEnd}$2`);
+          zip.file(cf, p);
+        }
+      } catch (err2) {
+        say(72, `提示：产品表现重建失败（${err2.message}），按模板原清单生成`);
+        await tick();
+      }
+    }
+  }
+
   // ===== 三 Sheet 重算补丁：概况 / 案例分析 / 全店铺全SKU类目汇总 =====
   // 这三个 Sheet 在模板里是硬编码快照（无公式），必须用上传数据重算后写回
-  say(70, '正在重算概况 / 案例分析 / 类目汇总…');
+  say(73, '正在重算概况 / 案例分析 / 类目汇总…');
   const patched = { overview: false, cases: false, category: false };
   try {
     const shared = await parseSharedStrings(zip);
@@ -379,10 +473,14 @@ export async function generateReport({ templateBlob, headers, rows, onProgress }
     const casePath = sheetPath('案例分析');
     const catPath = sheetPath('全店铺全SKU类目汇总');
 
-    const skuNameMap = await parseColsAB(zip, perfPath, shared, 3);
+    // 分析口径：上传产品表现 → 用上传清单；否则用模板内产品表现 A 列清单
+    const tpl = perfPath ? await parseColsAB(zip, perfPath, shared, 3) : { map: {}, skuList: [] };
+    const allowedSkuSet = product ? new Set(product.skuList) : new Set(tpl.skuList);
+    const skuNameMap = product ? { ...tpl.map, ...product.nameMap } : tpl.map;
+
     const prepped = prepRows(rows);
-    const ov = computeOverview(prepped);
-    const cases = computeCases(prepped, skuNameMap);
+    const ov = computeOverview(prepped, allowedSkuSet);
+    const cases = computeCases(prepped, skuNameMap, allowedSkuSet);
 
     if (ovPath && zip.file(ovPath)) {
       let s3 = await zip.file(ovPath).async('string');
@@ -427,10 +525,10 @@ export async function generateReport({ templateBlob, headers, rows, onProgress }
     }
 
     if (catPath && zip.file(catPath)) {
-      const tplCats = await parseColumnList(zip, catPath, shared, rangeRefs(4, 24, 'A'));
-      const catRows = computeCategory(prepped, tplCats.length ? tplCats : ['未识别类目']);
+      // 类目名从「大类排名」冒号前字段提取（动态 TOP20 + 未识别兜底，行数固定 21）
+      const catRows = computeCategory(prepped);
       let s6 = await zip.file(catPath).async('string');
-      for (let i = 0; i < catRows.length; i++) {
+      for (let i = 0; i < catRows.length && i < 21; i++) {
         const row = 4 + i;
         const d = catRows[i];
         s6 = patchCell(s6, `A${row}`, d.cat).xml;
@@ -467,6 +565,12 @@ export async function generateReport({ templateBlob, headers, rows, onProgress }
       s = s.replace(rangeRe, (mm, p1) => `${p1}${lookupEnd}`);
       zip.file(p, s);
     }
+  }
+  // 产品表现 sheet 重建后：同步 definedNames 里的 _FilterDatabase / 打印区域行数
+  if (productUsed && perfEnd) {
+    wbMod = wbMod
+      .replace(/(产品表现!\$A\$2:\$P\$)\d+/, `$1${perfEnd}`)
+      .replace(/(产品表现!\$A\$1:\$P\$)\d+/, `$1${perfEnd}`);
   }
 
   say(80, '正在设置打开即重算…');
@@ -511,6 +615,8 @@ export async function generateReport({ templateBlob, headers, rows, onProgress }
     expanded,
     pivotCount,
     patched,
+    productUsed,
+    productSkuCount: product ? product.skuList.length : 0,
   };
 }
 

@@ -62,6 +62,31 @@ function lastMonths(n, endOffset = 0) {
   return arr;
 }
 
+/**
+ * 按所选月份计算周期天数（规则：当前月=今天的前一天截止；过往/未来月=整月）
+ * @param {string} monthStr "yyyy-mm"
+ * @returns {{ passedDays:number, totalDays:number, endDate:string, sameMonth:boolean }}
+ */
+function getPeriodDays(monthStr) {
+  const now = new Date();
+  const m = String(monthStr || '').match(/^(\d{4})-(\d{1,2})$/);
+  if (!m) {
+    const total = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+    return { passedDays: 0, totalDays: total, endDate: '', sameMonth: false };
+  }
+  const yi = Number(m[1]);
+  const mi = Number(m[2]) - 1;
+  const total = new Date(yi, mi + 1, 0).getDate();
+  const sameMonth = yi === now.getFullYear() && mi === now.getMonth();
+  const passed = sameMonth ? Math.max(0, now.getDate() - 1) : total;
+  return {
+    passedDays: passed,
+    totalDays: total,
+    endDate: `${String(yi)}-${String(mi + 1).padStart(2, '0')}-${String(passed).padStart(2, '0')}`,
+    sameMonth,
+  };
+}
+
 /** 需要随月份存档/加载的字段（页面所有可输入数据快照） */
 const SNAP_KEYS = [
   'aeSales', 'aeProfit', 'saSales', 'saProfit',
@@ -104,9 +129,10 @@ export function render(container, { navigate, rerender }) {
 
   const g = (k) => Number(state[k]) || 0;
 
-  function recalc() {
-    const passed = g('passedDays');
-    const total = g('totalDays') || 1;
+  function recalc(month) {
+    const period = getPeriodDays(month);
+    const passed = period.passedDays;
+    const total = period.totalDays || 1;
     const rate = g('commissionRate');
     const ae = computeSite(g('aeSales'), g('aeProfit'), g('aeVatRate'), passed, total, rate);
     const sa = computeSite(g('saSales'), g('saProfit'), g('saVatRate'), passed, total, rate);
@@ -131,7 +157,8 @@ export function render(container, { navigate, rerender }) {
       const v = state[el.dataset.bind];
       el.value = (v === '' || v == null) ? '' : v;
     });
-    const r = recalc();
+    const month = (container.querySelector('[data-month-select]') || {}).value || defaultMonth;
+    const r = recalc(month);
     paint(r);
     updateInfoBar();
     const r2 = container.querySelector('#ae-rate2'); if (r2) r2.textContent = `${g('commissionRate')}%`;
@@ -150,14 +177,19 @@ export function render(container, { navigate, rerender }) {
     return Number(rec.actual) - Number(rec.est);
   }
 
-  /** 刷新顶部信息条 */
+  /** 刷新顶部信息条 + 同步周期天数输入框（当前月=今天前一天；过往月=整月） */
   function updateInfoBar() {
     const monthSel = container.querySelector('[data-month-select]');
     const month = monthSel ? monthSel.value : '';
-    const total = g('totalDays') || 1;
-    const passed = g('passedDays');
+    const period = getPeriodDays(month);
     const bar = container.querySelector('#comm-info-bar');
-    if (bar) bar.textContent = `历史月数据 ${month}-${String(total).padStart(2, '0')} 截止，共 ${passed}/${total} 天 · 不计入当天数据`;
+    if (bar) bar.textContent = `历史月数据 ${period.endDate} 截止，共 ${period.passedDays}/${period.totalDays} 天 · 不计入当天数据`;
+    const passedEl = container.querySelector('[data-period-passed]');
+    const totalEl = container.querySelector('[data-period-total]');
+    if (passedEl) passedEl.value = period.passedDays;
+    if (totalEl) totalEl.value = period.totalDays;
+    const hint = container.querySelector('#passed-hint');
+    if (hint) hint.style.display = period.passedDays > 0 ? 'none' : 'block';
   }
 
   function paint(r) {
@@ -331,8 +363,14 @@ export function render(container, { navigate, rerender }) {
           <span class="tag tag-blue">实时生效</span>
         </div>
         <div class="form-grid">
-          ${field('passedDays', '当月已过天数', '1日~昨天')}
-          ${field('totalDays', '当月总天数', '自动')}
+          <div class="field">
+            <label class="field-label">当月已过天数 <span class="hint">当前月=今天的前一天 / 过往月=整月</span></label>
+            <input class="input" type="number" readonly data-period-passed>
+          </div>
+          <div class="field">
+            <label class="field-label">当月总天数 <span class="hint">自动</span></label>
+            <input class="input" type="number" readonly data-period-total>
+          </div>
           ${field('commissionRate', '提成比例', '%')}
           ${field('aeVatRate', 'AE VAT 税率', '%')}
           ${field('saVatRate', 'SA VAT 税率', '%')}
@@ -424,7 +462,8 @@ export function render(container, { navigate, rerender }) {
   }
 
   // 初始绘制
-  paint(recalc());
+  const initMonth = (container.querySelector('[data-month-select]') || {}).value || defaultMonth;
+  paint(recalc(initMonth));
   renderRecords();
 
   // 实时输入 → 重算 + 保存
@@ -433,7 +472,9 @@ export function render(container, { navigate, rerender }) {
     if (bindEl) {
       const k = bindEl.dataset.bind;
       state[k] = bindEl.value === '' ? '' : Number(bindEl.value);
-      const r = recalc();
+      const ms = container.querySelector('[data-month-select]');
+      const month = ms ? ms.value : defaultMonth;
+      const r = recalc(month);
       paint(r);
       // 站点卡片底部费率同步
       container.querySelector('#ae-rate2').textContent = `${g('commissionRate')}%`;
@@ -451,7 +492,8 @@ export function render(container, { navigate, rerender }) {
         if (dEl) { dEl.textContent = diffFmt(diff); dEl.className = 'mono ' + (diff >= 0 ? 'pos' : 'neg'); }
         // 同步刷新顶部差额卡（如果当前所选月就是该记录月）
         const ms = container.querySelector('[data-month-select]');
-        if (ms && ms.value === rec.month) paint(recalc());
+        const month = ms ? ms.value : defaultMonth;
+        if (ms && ms.value === rec.month) paint(recalc(month));
         scheduleSave();
       }
       return;
@@ -462,8 +504,9 @@ export function render(container, { navigate, rerender }) {
   const monthSelect = container.querySelector('[data-month-select]');
   if (monthSelect) {
     monthSelect.addEventListener('change', () => {
+      const m = monthSelect.value;
       updateInfoBar();
-      paint(recalc());
+      paint(recalc(m));
     });
   }
 
@@ -498,7 +541,7 @@ export function render(container, { navigate, rerender }) {
       const n = new Date();
       return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}`;
     })();
-    const r = recalc();
+    const r = recalc(month);
     const est = Math.round(r.totalComm * 100) / 100;
     const ex = state.records.find((x) => x.month === month);
     const doSave = () => {

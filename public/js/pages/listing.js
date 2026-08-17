@@ -169,13 +169,17 @@ function renderList(container, { navigate, rerender }) {
           ? '<span class="tag tag-green">已保存</span>'
           : p.status === 'generated' ? '<span class="tag tag-blue">已生成</span>'
           : '<span class="tag">草稿</span>';
+        const used = Boolean(p.used);
+        const usedTag = used
+          ? '<span class="tag tag-green">✓ 已使用</span>'
+          : '<span class="tag">○ 未使用</span>';
         return `
-        <div class="card project-card" data-open="${p.id}">
+        <div class="card project-card${used ? ' used' : ''}" data-open="${p.id}">
           <div class="project-head">
             ${info.image ? `<img class="project-thumb" src="${esc(info.image)}" alt="">` : '<div class="project-thumb no-img">无图</div>'}
             <div style="min-width:0">
               <div class="project-name">${esc(info.name || '未命名产品')}</div>
-              <div class="project-meta">${statusTag}<span>${esc(info.site || 'US')} 站</span></div>
+              <div class="project-meta">${statusTag}${usedTag}<span>${esc(info.site || 'US')} 站</span></div>
             </div>
           </div>
           <div class="project-body">
@@ -186,7 +190,8 @@ function renderList(container, { navigate, rerender }) {
           </div>
           <div class="project-foot">
             <button class="btn btn-primary btn-sm flex-1" data-open2="${p.id}">${icon('edit')} 打开编辑</button>
-            <button class="btn btn-danger-soft btn-sm" data-del="${p.id}">${icon('trash')} 删除</button>
+            <button class="btn btn-${used ? 'soft' : 'ghost'} btn-sm" data-toggle-used="${p.id}" title="${used ? '取消已使用标记' : '标记为已使用'}">${used ? '✓ 已使用' : '○ 标记已用'}</button>
+            <button class="btn btn-danger-soft btn-sm" data-del="${p.id}">${icon('trash')}</button>
           </div>
         </div>`;
       }).join('')}
@@ -196,6 +201,17 @@ function renderList(container, { navigate, rerender }) {
     el.addEventListener('click', (e) => {
       e.stopPropagation();
       navigate(`listing:open:${el.dataset.open || el.dataset.open2}`);
+    });
+  });
+  grid.querySelectorAll('[data-toggle-used]').forEach((el) => {
+    el.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const id = el.dataset.toggleUsed;
+      const cur = getProject(id);
+      if (!cur) return;
+      updateProjectTracked(id, { used: !cur.used });
+      toastSuccess(cur.used ? '已取消使用标记' : '✓ 已标记为已使用');
+      rerender();
     });
   });
   grid.querySelectorAll('[data-del]').forEach((el) => {

@@ -904,8 +904,12 @@ html, body {
 
 /* 项目列表 */
 .project-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; }
-.project-card { overflow: hidden; display: flex; flex-direction: column; transition: transform .14s ease, box-shadow .14s ease; cursor: pointer; }
+.project-card { overflow: hidden; display: flex; flex-direction: column; transition: transform .14s ease, box-shadow .14s ease; cursor: pointer; position: relative; }
 .project-card:hover { transform: translateY(-2px); box-shadow: 0 14px 34px rgba(46,44,39,.09); }
+.project-card.used::before {
+  content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
+  background: var(--green); box-shadow: 0 0 0 1px var(--green);
+}
 .project-head { display: flex; align-items: center; gap: 12px; padding: 15px 16px; border-bottom: 1px solid var(--border); }
 .project-thumb { width: 48px; height: 48px; border-radius: 12px; object-fit: cover; background: var(--bg-deep); border: 1px solid var(--border); flex-shrink: 0; }
 .project-thumb.no-img { display: flex; align-items: center; justify-content: center; color: var(--text-faint); font-size: 10px; }

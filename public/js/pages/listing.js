@@ -191,7 +191,7 @@ function renderList(container, { navigate, rerender }) {
           <div class="project-foot">
             <button class="btn btn-primary btn-sm flex-1" data-open2="${p.id}">${icon('edit')} 打开编辑</button>
             <button class="btn btn-${used ? 'soft' : 'ghost'} btn-sm" data-toggle-used="${p.id}" title="${used ? '取消已使用标记' : '标记为已使用'}">${used ? '✓ 已使用' : '○ 标记已用'}</button>
-            <button class="btn btn-danger-soft btn-sm" data-del="${p.id}">${icon('trash')}</button>
+            <button class="btn btn-danger-soft btn-sm" data-del="${p.id}" title="删除该项目">${icon('trash')} 删除</button>
           </div>
         </div>`;
       }).join('')}

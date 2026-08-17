@@ -22,10 +22,22 @@ function load() {
   return products;
 }
 
+/** 持久化；失败返回 false（如 localStorage 空间已满） */
 function persist() {
   try {
     localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(products));
-  } catch (_) { /* 忽略 */ }
+    return true;
+  } catch (e) {
+    console.error('[productStore] 保存失败：', e && e.name, e && e.message);
+    return false;
+  }
+}
+
+/** 存储空间不足时的统一错误文案 */
+function storageFullError(action) {
+  return new Error(
+    `${action}失败：浏览器本地存储空间不足（约 5MB）。请先到「选品库」顶部导出备份，然后删除部分产品或压缩产品图片后再试。`
+  );
 }
 
 /** 兼容旧数据：把字符串 supply1688 转成 supplies 数组；单站点数据迁移为多站点结构（sites/quotes/quote） */
@@ -110,7 +122,10 @@ export function addProduct(data) {
     updatedAt: now,
   };
   load().push(item);
-  persist();
+  if (!persist()) {
+    load().pop(); // 回滚内存，避免下次误存
+    throw storageFullError('保存产品');
+  }
   return item;
 }
 
@@ -119,7 +134,7 @@ export function updateProduct(id, data) {
   const idx = list.findIndex((p) => p.id === id);
   if (idx < 0) return null;
   list[idx] = { ...list[idx], ...data, id, updatedAt: Date.now() };
-  persist();
+  if (!persist()) throw storageFullError('保存修改');
   return list[idx];
 }
 

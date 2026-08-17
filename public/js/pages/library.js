@@ -17,21 +17,42 @@ let currentPage = 0;
 let selectedIds = new Set();
 let currentCategory = CATEGORIES[0].id;
 
+/** 当前 localStorage 已用空间（MB，约数） */
+function storageUsageMB() {
+  let used = 0;
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      const v = localStorage.getItem(k);
+      used += (k ? k.length : 0) + (v ? v.length : 0);
+    }
+  } catch (_) {}
+  return (used * 2 / 1048576).toFixed(1); // UTF-16 每字符 2 字节
+}
+
 /* ---------------- 复制 / 移动 ---------------- */
 function copyProductTo(id, targetCat) {
   const p = getProduct(id);
   if (!p) return;
   const { id: _id, ...rest } = p;
-  addProductTracked({ ...rest, category: targetCat });
-  toastSuccess(`已复制到「${categoryLabel(targetCat)}」`);
+  try {
+    addProductTracked({ ...rest, category: targetCat });
+    toastSuccess(`已复制到「${categoryLabel(targetCat)}」`);
+  } catch (e) {
+    toastError((e && e.message) || '复制失败：本地存储空间不足');
+  }
 }
 function moveProductTo(id, targetCat) {
   const p = getProduct(id);
   if (!p) return;
   const { id: _id, ...rest } = p;
   removeProductTracked(id);
-  addProductTracked({ ...rest, category: targetCat });
-  toastSuccess(`已移动到「${categoryLabel(targetCat)}」`);
+  try {
+    addProductTracked({ ...rest, category: targetCat });
+    toastSuccess(`已移动到「${categoryLabel(targetCat)}」`);
+  } catch (e) {
+    toastError((e && e.message) || '移动失败：本地存储空间不足');
+  }
 }
 
 /* ---------------- 下拉菜单（复制/移动到哪个分类） ---------------- */
@@ -1093,6 +1114,14 @@ function openProductModal(existing, onDone) {
     statusEl.className = 'save-status save-status--' + state;
     statusEl.innerHTML = text;
   }
+  /** 存储空间不足时的提示（含当前已用空间） */
+  function storageFullMsg(e) {
+    const msg = (e && e.message) || '';
+    if (/存储空间|localStorage|Quota/.test(msg)) {
+      return `保存失败：浏览器本地存储已满（已用 ${storageUsageMB()}MB / 约5MB）。请先导出备份，再删除部分产品或压缩图片后重试。`;
+    }
+    return `保存失败：${msg || '未知错误'}，点击重试`;
+  }
   function doSave() {
     const data = buildData();
     try {
@@ -1106,7 +1135,9 @@ function openProductModal(existing, onDone) {
       }
     } catch (e) {
       saveDraft(data);
-      setStatus('error', '🔴 保存失败，点击重试');
+      const msg = storageFullMsg(e);
+      setStatus('error', `🔴 ${msg}`);
+      toastError(msg);
     }
   }
   function scheduleSave(kind) {

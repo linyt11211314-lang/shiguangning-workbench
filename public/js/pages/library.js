@@ -4,7 +4,7 @@
  */
 import { icon } from '../ui/icons.js';
 import { esc, normalizeUrl, formatDate, fileToDataURL, extractImageFromEvent, uid } from '../utils.js';
-import { listProducts, getProduct, addProductTracked, updateProductTracked, removeProductTracked } from '../store/productStore.js';
+import { listProducts, getProduct, addProductTracked, updateProductTracked, removeProductTracked, isProductsReady } from '../store/productStore.js';
 import { getSettings } from '../store/settingsStore.js';
 import { AMAZON_SITES, PER_SITE_RATES, CATEGORIES, CATEGORY_IDS, categoryLabel, PRICE_TIERS, PRICE_TIER_IDS, priceTierById, MAX_IMAGES, MAX_IMAGE_MB, ALLOWED_IMAGE_TYPES } from '../config.js';
 import { openModal, confirmDialog } from '../ui/modal.js';
@@ -16,6 +16,11 @@ let filter = '';
 let currentPage = 0;
 let selectedIds = new Set();
 let currentCategory = CATEGORIES[0].id;
+
+// 存储层错误（IndexedDB 写入失败等）→ 全局提示
+try {
+  window.addEventListener('sgn:store-error', (e) => { toastError((e && e.detail) || '保存失败：浏览器本地存储异常'); });
+} catch (_) {}
 
 /** 当前 localStorage 已用空间（MB，约数） */
 function storageUsageMB() {
@@ -107,6 +112,14 @@ function openMenuForProduct(id, type, anchorEl) {
 export function render(container, { navigate, rerender }) {
   currentPage = 0;
   const products = listProducts();
+  // IndexedDB 首次加载中：显示占位，就绪后 app 层自动重渲染
+  if (!isProductsReady() && !products.length) {
+    container.innerHTML = `
+      <div class="card card-pad" style="padding:44px 20px;text-align:center;color:var(--text-sub)">
+        <div style="font-size:14px">选品库数据加载中…</div>
+      </div>`;
+    return;
+  }
   const counts = {};
   CATEGORIES.forEach((c) => { counts[c.id] = products.filter((p) => p.category === c.id).length; });
   const total = products.length;

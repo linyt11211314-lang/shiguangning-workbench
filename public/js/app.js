@@ -6,7 +6,7 @@ import { icon } from './ui/icons.js';
 import { esc } from './utils.js';
 import { hasApiKey, getSettings, maskedKey, applyTheme, syncFollowSystem } from './store/settingsStore.js';
 import { onProjectsChange } from './store/projectStore.js';
-import { onProductsChange, countProducts } from './store/productStore.js';
+import { onProductsChange, countProducts, initProducts } from './store/productStore.js';
 import { onScheduleChange } from './store/scheduleStore.js';
 import { render as renderHome } from './pages/home.js';
 import { render as renderLibrary } from './pages/library.js';
@@ -126,6 +126,9 @@ function init() {
   // 应用已保存的主题（明暗模式 + 主题色 + 密度/字号/圆角）
   applyTheme();
   syncFollowSystem();
+
+  // 选品库数据迁移并预加载到 IndexedDB（异步，就绪后自动刷新当前页）
+  initProducts();
 
   // 恢复上次停留的页面（刷新不跳回首页）
   try {

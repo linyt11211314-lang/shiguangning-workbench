@@ -1,44 +1,191 @@
 /**
- * 选品库存储（localStorage 持久化）
+ * 选品库存储（IndexedDB 持久化，容量大；localStorage 仅作迁移源与降级回退）
  * 产品字段：id, image, name, category, site,
  *          supplies（1688 货源数组 [{ link, specColor }]，最多 3 条）,
  *          supply1688（兼容旧单条字符串）,
  *          quote（报价测算 { lengthCm, widthCm, heightCm, weightG, cost, exchangeRate,
  *                         targetProfitRate, adRate, referralRate, fbaFee, shippingPerUnit, result }）,
  *          description, keywords, createdAt, updatedAt
+ *
+ * 设计：
+ *  - 对外 API 保持同步签名（listProducts/getProduct/addProduct/updateProduct/removeProduct）
+ *  - 内部 = 内存缓存 + 启动预加载（initProducts）+ 异步落盘 IndexedDB
+ *  - 旧 localStorage 数据（sgn.products）首次自动迁移进 IndexedDB 后删除
+ *  - IndexedDB 不可用（隐私模式等）时自动回退 localStorage
  */
 import { STORAGE_KEYS, CATEGORY_IDS, PRICE_TIER_IDS } from '../config.js';
 import { uid } from '../utils.js';
 
+const DB_NAME = 'sgn-workbench';
+const DB_VERSION = 1;
+const STORE = 'products';
+
 let products = null;
+let ready = false;
+let useLegacy = false; // IndexedDB 不可用 → 回退 localStorage
+let dbPromise = null;
+let initPromise = null;
 
-function load() {
-  if (products) return products;
+/* ===================== IndexedDB 基础 ===================== */
+
+function openDB() {
+  if (dbPromise) return dbPromise;
+  dbPromise = new Promise((resolve, reject) => {
+    if (typeof indexedDB === 'undefined') { reject(new Error('IndexedDB 不可用')); return; }
+    let req;
+    try { req = indexedDB.open(DB_NAME, DB_VERSION); }
+    catch (e) { reject(e); return; }
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE, { keyPath: 'id' });
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+  return dbPromise;
+}
+
+function idbGetAll() {
+  return openDB().then((db) => new Promise((resolve, reject) => {
+    const t = db.transaction(STORE, 'readonly');
+    const rq = t.objectStore(STORE).getAll();
+    rq.onsuccess = () => resolve(rq.result || []);
+    rq.onerror = () => reject(rq.error);
+  }));
+}
+
+function idbPut(item) {
+  return openDB().then((db) => new Promise((resolve, reject) => {
+    const t = db.transaction(STORE, 'readwrite');
+    t.objectStore(STORE).put(item);
+    t.oncomplete = () => resolve();
+    t.onerror = () => reject(t.error);
+    t.onabort = () => reject(t.error);
+  }));
+}
+
+function idbDelete(id) {
+  return openDB().then((db) => new Promise((resolve, reject) => {
+    const t = db.transaction(STORE, 'readwrite');
+    t.objectStore(STORE).delete(id);
+    t.oncomplete = () => resolve();
+    t.onerror = () => reject(t.error);
+    t.onabort = () => reject(t.error);
+  }));
+}
+
+/* ===================== 旧数据迁移 ===================== */
+
+function readLegacy() {
   try {
-    products = JSON.parse(localStorage.getItem(STORAGE_KEYS.PRODUCTS)) || [];
+    const raw = localStorage.getItem(STORAGE_KEYS.PRODUCTS);
+    const arr = raw ? JSON.parse(raw) : [];
+    return Array.isArray(arr) ? arr : [];
   } catch (_) {
-    products = [];
-  }
-  return products;
-}
-
-/** 持久化；失败返回 false（如 localStorage 空间已满） */
-function persist() {
-  try {
-    localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(products));
-    return true;
-  } catch (e) {
-    console.error('[productStore] 保存失败：', e && e.name, e && e.message);
-    return false;
+    return [];
   }
 }
 
-/** 存储空间不足时的统一错误文案 */
-function storageFullError(action) {
-  return new Error(
-    `${action}失败：浏览器本地存储空间不足（约 5MB）。请先到「选品库」顶部导出备份，然后删除部分产品或压缩产品图片后再试。`
-  );
+/** 迁移 localStorage 旧数据 → IndexedDB；成功后删除 localStorage key */
+async function migrateLegacy() {
+  const legacy = readLegacy();
+  if (!legacy.length) return false;
+  const db = await openDB();
+  await new Promise((resolve, reject) => {
+    const t = db.transaction(STORE, 'readwrite');
+    const s = t.objectStore(STORE);
+    legacy.forEach((p) => { if (p && p.id) s.put(p); });
+    t.oncomplete = resolve;
+    t.onerror = () => reject(t.error);
+    t.onabort = () => reject(t.error);
+  });
+  try { localStorage.removeItem(STORAGE_KEYS.PRODUCTS); } catch (_) {}
+  return true;
 }
+
+/* ===================== 初始化（幂等） ===================== */
+
+/** 启动预加载：IndexedDB → 空则迁移 localStorage → ready → notify */
+export function initProducts() {
+  if (ready) return Promise.resolve();
+  if (initPromise) return initPromise;
+  initPromise = (async () => {
+    try {
+      let data = await idbGetAll();
+      if (!data.length) {
+        const migrated = await migrateLegacy();
+        if (migrated) data = await idbGetAll();
+      }
+      // 若加载期间已有抢先写入（用户极快保存），以内存为准合并 DB 数据
+      const preExisting = products;
+      if (preExisting && preExisting.length) {
+        const map = new Map((data || []).map((p) => [p.id, p]));
+        preExisting.forEach((p) => { if (p && p.id) map.set(p.id, p); });
+        products = [...map.values()];
+      } else {
+        products = data || [];
+      }
+      useLegacy = false;
+    } catch (e) {
+      // IndexedDB 不可用 → 回退 localStorage（旧行为）
+      console.warn('[productStore] IndexedDB 不可用，回退 localStorage：', e && e.message);
+      useLegacy = true;
+      if (!products) products = readLegacy();
+    }
+    ready = true;
+    notifyProductsChange(); // 触发当前页重渲染（app 层 refresh）
+  })();
+  return initPromise;
+}
+
+function ensureLoaded() {
+  if (!ready) {
+    if (!products) products = [];
+    initProducts(); // 触发加载；首次调用方立即拿到空缓存，就绪后 notify 重渲染
+  }
+}
+
+export function isProductsReady() {
+  return ready;
+}
+
+/* ===================== 持久化（异步落盘 + 失败可感知） ===================== */
+
+function emitStoreError(msg) {
+  try { window.dispatchEvent(new CustomEvent('sgn:store-error', { detail: msg })); } catch (_) {}
+}
+
+/** 内存已改 → 等 init 完成后异步落盘；失败时回滚并广播错误 */
+function syncAfter() {
+  const snapshot = JSON.stringify(products);
+  initProducts().then(() => {
+    const task = useLegacy
+      ? Promise.resolve().then(() => {
+          localStorage.setItem(STORAGE_KEYS.PRODUCTS, snapshot);
+        })
+      : idbReplace();
+    task.catch((err) => {
+      console.error('[productStore] 保存失败：', err && err.message);
+      try { products = JSON.parse(snapshot); } catch (_) {}
+      notifyProductsChange();
+      emitStoreError('保存失败：浏览器本地存储异常，请刷新后重试。');
+    });
+  });
+}
+
+function idbReplace() {
+  return openDB().then((db) => new Promise((resolve, reject) => {
+    const t = db.transaction(STORE, 'readwrite');
+    const s = t.objectStore(STORE);
+    s.clear();
+    products.forEach((p) => { if (p && p.id) s.put(p); });
+    t.oncomplete = () => resolve();
+    t.onerror = () => reject(t.error);
+    t.onabort = () => reject(t.error);
+  }));
+}
+
+/* ===================== 同步 API（对外签名不变） ===================== */
 
 /** 兼容旧数据：把字符串 supply1688 转成 supplies 数组；单站点数据迁移为多站点结构（sites/quotes/quote） */
 export function normalizeProduct(p) {
@@ -82,15 +229,18 @@ export function normalizeProduct(p) {
 }
 
 export function listProducts() {
-  return load().map(normalizeProduct).sort((a, b) => b.updatedAt - a.updatedAt);
+  ensureLoaded();
+  return (products || []).map(normalizeProduct).sort((a, b) => b.updatedAt - a.updatedAt);
 }
 
 export function getProduct(id) {
-  const p = load().find((x) => x.id === id);
+  ensureLoaded();
+  const p = (products || []).find((x) => x.id === id);
   return p ? normalizeProduct(p) : null;
 }
 
 export function addProduct(data) {
+  ensureLoaded();
   const now = Date.now();
   const sites = Array.isArray(data.sites) && data.sites.length ? data.sites : [data.site || 'US'];
   const mainSite = sites[0] || data.site || 'US';
@@ -121,32 +271,31 @@ export function addProduct(data) {
     createdAt: now,
     updatedAt: now,
   };
-  load().push(item);
-  if (!persist()) {
-    load().pop(); // 回滚内存，避免下次误存
-    throw storageFullError('保存产品');
-  }
+  products.push(item);
+  syncAfter();
   return item;
 }
 
 export function updateProduct(id, data) {
-  const list = load();
+  ensureLoaded();
+  const list = products || [];
   const idx = list.findIndex((p) => p.id === id);
   if (idx < 0) return null;
   list[idx] = { ...list[idx], ...data, id, updatedAt: Date.now() };
-  if (!persist()) throw storageFullError('保存修改');
+  syncAfter();
   return list[idx];
 }
 
 export function removeProduct(id) {
-  load();
-  const before = products.length;
-  products = products.filter((p) => p.id !== id);
-  if (products.length !== before) persist();
+  ensureLoaded();
+  const before = (products || []).length;
+  products = (products || []).filter((p) => p.id !== id);
+  if (products.length !== before) syncAfter();
 }
 
 export function countProducts() {
-  return load().length;
+  ensureLoaded();
+  return (products || []).length;
 }
 
 /** 供其他模块订阅变更 */

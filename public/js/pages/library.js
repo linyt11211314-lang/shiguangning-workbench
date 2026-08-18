@@ -273,15 +273,16 @@ export function render(container, { navigate, rerender }) {
           ${list.map((p) => {
           const siteInfo = AMAZON_SITES.find((s) => s.code === p.site);
           const r = quickQuote(p.quote, p.site);
+          const r99 = (r && !r.error) ? apply99(r) : null;
           const sym = (r && r.symbol) || (siteInfo && siteInfo.symbol) || '$';
           const costText = r && r.breakdown && r.breakdown.costUsd != null ? `${sym}${r.breakdown.costUsd}` : '—';
-          const priceText = r && r.price != null ? `${sym}${r.price}` : '—';
+          const priceText = r99 ? `${sym}${r99.displayPrice.toFixed(2)}` : '—';
           const lwh = [p.quote && p.quote.lengthCm, p.quote && p.quote.widthCm, p.quote && p.quote.heightCm].filter((v) => v !== '' && v != null);
           const wt = p.quote && p.quote.weightG;
           const wtKg = (wt != null && wt !== '') ? Math.round((Number(wt) / 1000) * 1000) / 1000 : null;
           const wtText = wtKg != null ? `${wtKg}kg` : '';
           const sizeText = (lwh.length === 3 && wtKg != null) ? `${lwh[0]}×${lwh[1]}×${lwh[2]}cm · ${wtText}` : (lwh.length || wtKg != null ? `${lwh.join('×')}${lwh.length && wtKg != null ? ' · ' : ''}${wtText}` : '—');
-          const profitText = r && r.profit != null ? `${sym}${r.profit} · ${Math.round((r.margin || 0) * 100)}%` : '—';
+          const profitText = r99 ? `${sym}${r99.displayProfit.toFixed(2)} · ${Math.round(r99.displayMargin * 100)}%` : '—';
           const rowSel = selectedIds.has(p.id);
           return `
           <div class="lib-table-row ${rowSel ? 'selected' : ''}" data-id="${p.id}" title="点击编辑产品">
@@ -912,10 +913,10 @@ function openProductModal(existing, onDone) {
           return `
           <div class="tier-card tier-${t.color} ${isSel ? 'selected' : ''}" data-tier="${t.id}">
             <div class="tier-head">${t.label}</div>
-            <div class="tier-margin-sub">利润率 ${Math.round(t.margin * 100)}%</div>
+            <div class="tier-margin-sub">目标利润率 ≥${Math.round(t.margin * 100)}%</div>
             ${tv ? `<div class="tier-price">${sym}${tv.displayPrice.toFixed(2)}</div>
               <div class="tier-profit">利润 ${sym}${tv.displayProfit.toFixed(2)}</div>
-              <div class="tier-margin2">利润率 ${Math.round(tv.margin * 100)}%</div>`
+              <div class="tier-margin2">实际利润率 ${Math.round((tv.displayMargin != null ? tv.displayMargin : tv.margin) * 100)}%</div>`
               : `<div class="tier-empty">填写成本后计算</div>`}
           </div>`;
         }).join('')}

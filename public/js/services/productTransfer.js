@@ -6,7 +6,7 @@
 import { listProducts, addProductTracked } from '../store/productStore.js';
 import { toastInfo } from '../ui/toast.js';
 import { AMAZON_SITES, CATEGORY_IDS } from '../config.js';
-import { calculateQuote } from './pricing.js';
+import { calculateQuote, apply99 } from './pricing.js';
 
 const r2 = (n) => (n === '' || n == null || isNaN(n)) ? '' : Math.round(Number(n) * 100) / 100;
 
@@ -54,6 +54,8 @@ function getXLSX() {
 function productToRow(p) {
   const q = p.quote || {};
   const r = q.result || {};
+  // 建议售价用 .99 结尾的展示价，利润率按展示价对应实际值（>= 目标档位）
+  const r99 = (r && !r.error && isFinite(r.price)) ? apply99(r) : null;
   const s = (i) => (p.supplies || [])[i] || {};
   return {
     产品名称: p.name || '',
@@ -78,9 +80,9 @@ function productToRow(p) {
     '类目佣金率(%)': r2(q.referralRate),
     FBA费: r2(q.fbaFee),
     头程费: r2(q.shippingPerUnit),
-    建议售价: r.price == null ? '' : r2(r.price),
-    预计利润: r.profit == null ? '' : r2(r.profit),
-    '利润率(%)': r.margin == null ? '' : r2(r.margin * 100),
+    建议售价: r99 ? r2(r99.displayPrice) : (r.price == null ? '' : r2(r.price)),
+    预计利润: r99 ? r2(r99.displayProfit) : (r.profit == null ? '' : r2(r.profit)),
+    '利润率(%)': r99 ? r2(r99.displayMargin * 100) : (r.margin == null ? '' : r2(r.margin * 100)),
     产品描述: p.description || '',
   };
 }

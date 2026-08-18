@@ -89,30 +89,30 @@ export function calculateQuote(input = {}) {
 }
 
 /**
- * 将报价转换为 .99 结尾的展示价，且保证展示价 >= 理论售价（利润率达标）
- * 公式：展示价 = floor(理论售价) + 0.99；若 floor+0.99 < 理论售价，则 +1 → floor+1.99
- * 同时按展示价重算实际利润（展示价 - 各费率项 - 单件成本）
- * @param {{price:number, breakdown:object}} quote calculateQuote 的返回
- * @returns {{displayPrice:number, displayProfit:number}|null}
+ * 将报价转换为 .99 结尾的展示价，且保证展示价的实际利润率 >= 目标利润率档位（≥30% / ≥15% / ≥1%）
+ * 公式：展示价 = floor(理论售价) + 0.99；若实际利润率未达目标，则逐档 +1 保持 .99 结尾，直至达标
+ * 同时按展示价重算实际利润与实际利润率
+ * @param {{price:number, targetProfitRate:number, breakdown:object}} quote calculateQuote 的返回
+ * @returns {{displayPrice:number, displayProfit:number, displayMargin:number}|null}
  */
 export function apply99(quote) {
   if (!quote || quote.error || !isFinite(quote.price)) return null;
   // 理论售价（calculateQuote 已含全部费率与目标利润率，是达成目标利润率的精确售价）
-  // 注意：此处不预先对 p 做 2 位四舍五入——calculateQuote 本身已返回 2 位价；
-  // 若提前四舍五入会把 1.991 之类亚分位价压成 1.99，导致后续比较误判为利润率不达标。
   const p = quote.price;
-  // 显示价必须以 .99 结尾，且保证 >= 理论售价（利润率达标）：
-  //   先 floor + 0.99；若仍低于理论价，则 +1 → floor + 1.99
-  // 用 round2 + epsilon 规避浮点误差（如 35 + 0.99 在 IEEE754 下可能得 35.9899…）
-  const floorP = Math.floor(p);
-  let d = Math.round((floorP + 0.99) * 100) / 100;
-  if (d < p - 1e-9) d = Math.round((floorP + 1.99) * 100) / 100;
+  const targetMargin = Number(quote.targetProfitRate) || 0; // 目标利润率（0-1）
   const b = quote.breakdown || {};
   const total = (Number(b.costUsd) || 0) + (Number(b.fbaFee) || 0) + (Number(b.shippingPerUnit) || 0);
   const fiveDed = (Number(b.referral) || 0) + (Number(b.ad) || 0) + (Number(b.avt) || 0) + (Number(b.storage) || 0) + (Number(b.return) || 0);
-  const sumFiveRates = p > 0 ? fiveDed / p : 0;
-  const profit = d * (1 - sumFiveRates) - total;
-  return { displayPrice: d, displayProfit: Math.round(profit * 100) / 100 };
+  const marginOf = (price) => (price > 0 ? (price - fiveDed - total) / price : 0);
+  // 展示价必须以 .99 结尾，且实际利润率 >= 目标档位；浮点用 epsilon 规避
+  let d = Math.round((Math.floor(p) + 0.99) * 100) / 100;
+  let guard = 0;
+  while (marginOf(d) < targetMargin - 1e-6 && guard < 50) {
+    d = Math.round((Math.floor(d) + 1.99) * 100) / 100; // 保持 .99 结尾，逐档上调
+    guard += 1;
+  }
+  const profit = Math.round((d - fiveDed - total) * 100) / 100;
+  return { displayPrice: d, displayProfit: profit, displayMargin: marginOf(d) };
 }
 
 /** 默认测算参数（百分比字段与 UI 一致，用整数，如 30 表示 30%） */

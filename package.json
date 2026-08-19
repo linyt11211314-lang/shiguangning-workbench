@@ -1,18 +1,64 @@
 {
   "name": "shiguangning-workbench",
   "version": "1.0.0",
-  "description": "拾光柠工作台 · AI Listing工坊 — 亚马逊产品开发内容生成中心",
-  "main": "server.js",
+  "description": "拾光柠工作台 · AI Listing工坊 — 亚马逊产品开发内容生成中心（含 Windows 桌面版）",
+  "author": "拾光柠",
+  "main": "desktop/main.js",
   "type": "commonjs",
   "scripts": {
     "start": "node server.js",
-    "dev": "node server.js"
+    "dev": "node server.js",
+    "electron": "electron .",
+    "dist": "electron-builder --win nsis"
   },
   "dependencies": {
     "express": "^4.19.2",
     "xlsx": "^0.18.5"
   },
+  "devDependencies": {
+    "electron": "^33.4.11",
+    "electron-builder": "^25.1.8",
+    "pdf-lib": "^1.17.1",
+    "pdfjs-dist": "^2.16.105"
+  },
   "engines": {
     "node": ">=18"
+  },
+  "build": {
+    "appId": "com.shiguangning.workbench",
+    "productName": "拾光柠工作台",
+    "copyright": "Copyright © 2026 拾光柠",
+    "directories": {
+      "output": "dist",
+      "buildResources": "desktop/build"
+    },
+    "files": [
+      "desktop/**/*",
+      "public/**/*",
+      "server.js",
+      "package.json",
+      "node_modules/**/*"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": "x64"
+        }
+      ],
+      "signAndEditExecutable": false,
+      "signtoolOptions": {
+        "sign": "desktop/noop-sign.cjs"
+      }
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "拾光柠工作台",
+      "artifactName": "${productName}-${version}-setup.${ext}"
+    }
   }
 }

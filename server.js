@@ -232,6 +232,14 @@ app.post('/api/listing/generate', async (req, res) => {
 app.get('/api/health', (_req, res) => res.json({ ok: true, name: 'shiguangning-workbench' }));
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`🍋 拾光柠工作台已启动: http://localhost:${PORT}`);
-});
+const HOST = process.env.HOST || '0.0.0.0';
+
+// 被 Electron 主进程 require 复用时只导出 app，不在此处监听；
+// 仅在直接 `node server.js` 时才真正监听端口（Render 部署走这条路径）。
+if (require.main === module) {
+  app.listen(PORT, HOST, () => {
+    console.log(`🍋 拾光柠工作台已启动: http://${HOST}:${PORT}`);
+  });
+}
+
+module.exports = app;

@@ -26,6 +26,12 @@ let useLegacy = false; // IndexedDB 不可用 → 回退 localStorage
 let dbPromise = null;
 let initPromise = null;
 
+/**
+ * 桌面版（Electron）标记：preload 注入 window.__fs 后即表示数据应落本地文件。
+ * 此时强制走 legacy（localStorage 由 preload 重定向为文件），不再使用 IndexedDB。
+ */
+const DESKTOP = typeof window !== 'undefined' && !!window.__fs;
+
 /* ===================== IndexedDB 基础 ===================== */
 
 function openDB() {
@@ -110,6 +116,14 @@ export function initProducts() {
   if (ready) return Promise.resolve();
   if (initPromise) return initPromise;
   initPromise = (async () => {
+    // 桌面版：直接以文件化的 localStorage 作为数据源，跳过 IndexedDB
+    if (DESKTOP) {
+      products = readLegacy();
+      useLegacy = true;
+      ready = true;
+      notifyProductsChange();
+      return;
+    }
     try {
       let data = await idbGetAll();
       if (!data.length) {
@@ -155,16 +169,16 @@ function emitStoreError(msg) {
   try { window.dispatchEvent(new CustomEvent('sgn:store-error', { detail: msg })); } catch (_) {}
 }
 
-/** 内存已改 → 等 init 完成后异步落盘；失败时回滚并广播错误 */
+/** 内存已改 → 等 init 完成后异步落盘；失败时回滚并广播错误。返回落盘 Promise 便于备份导入等待完成。 */
 function syncAfter() {
   const snapshot = JSON.stringify(products);
-  initProducts().then(() => {
+  return initProducts().then(() => {
     const task = useLegacy
       ? Promise.resolve().then(() => {
           localStorage.setItem(STORAGE_KEYS.PRODUCTS, snapshot);
         })
       : idbReplace();
-    task.catch((err) => {
+    return task.catch((err) => {
       console.error('[productStore] 保存失败：', err && err.message);
       try { products = JSON.parse(snapshot); } catch (_) {}
       notifyProductsChange();
@@ -308,3 +322,25 @@ const _add = addProduct, _update = updateProduct, _remove = removeProduct;
 export function addProductTracked(data) { const r = _add(data); notifyProductsChange(); return r; }
 export function updateProductTracked(id, data) { const r = _update(id, data); if (r) notifyProductsChange(); return r; }
 export function removeProductTracked(id) { _remove(id); notifyProductsChange(); }
+
+/* ===================== 备份 / 恢复（含 IndexedDB 数据） ===================== */
+/**
+ * 导出当前选品库原始数组（从活跃存储读取：web 为 IndexedDB，桌面为文件化 localStorage）。
+ * 含 images（base64）等全部字段，供 dataBackup 全量打包。
+ */
+export async function exportProductsRaw() {
+  await initProducts();
+  return (products || []).map((p) => ({ ...p }));
+}
+
+/**
+ * 用原始数组覆盖选品库（写入活跃存储：web 写 IndexedDB，桌面写文件化 localStorage）。
+ * @param {Array} arr 产品数组
+ */
+export async function importProductsRaw(arr) {
+  if (!Array.isArray(arr)) return;
+  products = arr.map((p) => normalizeProduct(p));
+  ready = true;
+  useLegacy = DESKTOP ? true : useLegacy;
+  await syncAfter();
+}

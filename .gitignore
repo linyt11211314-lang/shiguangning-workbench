@@ -22,3 +22,8 @@ excel_dump.txt
 *.xls
 *.csv
 !public/vendor/*.js
+
+# Electron 构建产物
+dist/
+*.exe
+desktop/build/

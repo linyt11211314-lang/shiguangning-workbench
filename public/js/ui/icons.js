@@ -61,6 +61,7 @@ const PATHS = {
   xCircle: '<circle cx="12" cy="12" r="9"/><path d="M15 9l-6 6M9 9l6 6"/>',
   analytics: '<rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M7.5 16v-4M12 16V8.5M16.5 16v-2.5"/>',
   sheet: '<rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M3 9.5h18M3 15h18M9 4v16M15 4v16"/>',
+  pdf: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M9 13h6M9 17h4"/>',
 };
 
 export function icon(name, cls = '') {

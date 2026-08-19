@@ -13,16 +13,25 @@ const BACKUP_KEYS = [
   { key: STORAGE_KEYS.STATS, name: '统计' },
 ];
 
-/** 汇总当前全部本地数据（解析为对象） */
-export function collectBackup() {
+/** 汇总当前全部本地数据（解析为对象）
+ * 注意：选品库在 web 端存于 IndexedDB，故需经 productStore 导出；其余键仍从 localStorage 读取。
+ */
+export async function collectBackup() {
   const data = {};
-  BACKUP_KEYS.forEach(({ key }) => {
+  for (const { key } of BACKUP_KEYS) {
+    if (key === STORAGE_KEYS.PRODUCTS) continue; // 选品库单独处理（可能存 IndexedDB）
     const raw = localStorage.getItem(key);
     if (raw != null) {
       try { data[key] = JSON.parse(raw); }
       catch (_) { data[key] = raw; } // 兜底：无法解析时原样保存
     }
-  });
+  }
+  // 选品库：经由 productStore 从活跃存储（IndexedDB/web 或文件/localStorage 桌面）读取，含图片
+  try {
+    const { exportProductsRaw } = await import('../store/productStore.js');
+    const prods = await exportProductsRaw();
+    if (prods && prods.length) data[STORAGE_KEYS.PRODUCTS] = prods;
+  } catch (_) { /* 忽略选品库导出异常 */ }
   return {
     app: '拾光柠工作台',
     version: 1,
@@ -32,8 +41,8 @@ export function collectBackup() {
 }
 
 /** 触发浏览器下载备份 JSON 文件 */
-export function downloadBackup() {
-  const backup = collectBackup();
+export async function downloadBackup() {
+  const backup = await collectBackup();
   const json = JSON.stringify(backup, null, 2);
   const blob = new Blob([json], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
@@ -94,11 +103,12 @@ export function summarizeBackup(obj) {
   };
 }
 
-/** 应用备份：覆盖对应键（缺失项跳过） */
-export function applyBackup(obj) {
+/** 应用备份：覆盖对应键（缺失项跳过）
+ * 选品库单独经 productStore 写回活跃存储（IndexedDB/web 或文件/localStorage 桌面），含图片。
+ */
+export async function applyBackup(obj) {
   const map = {
     [STORAGE_KEYS.SETTINGS]: obj.settings,
-    [STORAGE_KEYS.PRODUCTS]: obj.products,
     [STORAGE_KEYS.PROJECTS]: obj.listingProjects,
     [STORAGE_KEYS.STATS]: obj.stats,
   };
@@ -107,4 +117,13 @@ export function applyBackup(obj) {
     const toWrite = typeof val === 'string' ? val : JSON.stringify(val);
     try { localStorage.setItem(key, toWrite); } catch (_) { /* 忽略写入失败 */ }
   });
+  // 选品库：写回活跃存储（web=IndexedDB，桌面=文件化 localStorage），确保图片随数据迁移
+  if (obj.products != null) {
+    try {
+      const { importProductsRaw } = await import('../store/productStore.js');
+      await importProductsRaw(obj.products);
+    } catch (e) {
+      console.error('[dataBackup] 选品库导入失败：', e && e.message);
+    }
+  }
 }

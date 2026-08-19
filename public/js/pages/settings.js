@@ -506,8 +506,8 @@ export function render(container, { rerender }) {
         message: `即将用备份覆盖当前设备上的数据：\n\n${lines.join('\n')}\n\n覆盖后无法撤销，建议先「导出数据」留底。`,
         confirmText: '覆盖导入',
         danger: true,
-        onConfirm: () => {
-          applyBackup(parsed);
+        onConfirm: async () => {
+          await applyBackup(parsed);
           toastSuccess('导入成功，正在刷新…');
           setTimeout(() => location.reload(), 600);
         },
@@ -517,8 +517,8 @@ export function render(container, { rerender }) {
     }
   });
 
-  container.querySelector('[data-backup-export]').addEventListener('click', () => {
-    downloadBackup();
+  container.querySelector('[data-backup-export]').addEventListener('click', async () => {
+    await downloadBackup();
     toastSuccess('已导出备份文件（JSON）到本地下载目录');
   });
   container.querySelector('[data-backup-import]').addEventListener('click', () => backupFileInput.click());

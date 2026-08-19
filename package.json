@@ -17,9 +17,7 @@
   },
   "devDependencies": {
     "electron": "^33.4.11",
-    "electron-builder": "^25.1.8",
-    "pdf-lib": "^1.17.1",
-    "pdfjs-dist": "^2.16.105"
+    "electron-builder": "^25.1.8"
   },
   "engines": {
     "node": ">=18"

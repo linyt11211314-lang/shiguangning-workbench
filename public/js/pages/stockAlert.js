@@ -275,7 +275,7 @@ export function render(container, ctx) {
           ? `<div class="sa-empty"><div class="sa-empty-ico">${icon('upload')}</div><div>导入库存表格后，这里将按当前筛选状态列出 SKU</div></div>`
           : filteredList.length === 0
             ? `<div class="sa-empty"><div class="sa-empty-ico">${icon('checkCircle')}</div><div>当前筛选下没有匹配的 SKU</div></div>`
-            : visible.map(alertCard).join('') +
+            : `<div class="sa-alerts-grid">${visible.map(alertCard).join('')}</div>` +
               (hasMore
                 ? `<div class="sa-list-more"><button class="btn btn-soft btn-sm" id="saLoadMore">加载更多（剩余 ${filteredList.length - visible.length} 条）</button></div>`
                 : (showCollapse

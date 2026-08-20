@@ -1932,7 +1932,7 @@ html, body {
 .an-product-actions .btn { box-shadow: none; }
 
 /* ===== 库存预警 ===== */
-.sa-wrap { max-width: 1080px; }
+.sa-wrap { max-width: 100%; }
 .sa-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
 .sa-toolbar-info { font-size: 12.5px; color: var(--text-sub); }
 .sa-toolbar-actions { display: flex; gap: 8px; }

@@ -18,7 +18,7 @@ import { autoMap, buildRows, MAX_UPLOAD_MB, ACCEPT } from '../services/dataImpor
 
 /* ===================== 页面状态 ===================== */
 const PAGE_SIZE = 30;
-const pageState = { filter: 'pending', visible: PAGE_SIZE };
+const pageState = { filter: 'pending', visible: PAGE_SIZE, onlyNeed: false };
 
 /* ===================== 工具 ===================== */
 function num(v) {
@@ -186,9 +186,13 @@ export function render(container, ctx) {
   const alerts = buildAlerts(data, params, ops);
 
   // 按状态分组（待补货的排除已补货）
-  const allCritical = alerts.filter((a) => a.risk === 'critical' && !a.op.restockedAt);
-  const allWarning = alerts.filter((a) => a.risk === 'warning' && !a.op.restockedAt);
-  const allOk = alerts.filter((a) => a.risk === 'ok');
+  // 「只看需补货的」：剔除标记「暂无补货必要 / 暂无需补货」的卡片
+  const isNoNeed = (a) => a.risk === 'ok' || /暂无补货必要|暂无需补货/.test(a.suggestedNote || '');
+  const need = (list) => (pageState.onlyNeed ? list.filter((a) => !isNoNeed(a)) : list);
+
+  const allCritical = need(alerts.filter((a) => a.risk === 'critical' && !a.op.restockedAt));
+  const allWarning = need(alerts.filter((a) => a.risk === 'warning' && !a.op.restockedAt));
+  const allOk = need(alerts.filter((a) => a.risk === 'ok'));
   const allPending = [...allCritical, ...allWarning];
 
   const cntAll = allPending.length;
@@ -240,6 +244,7 @@ export function render(container, ctx) {
         <label>安全库存天数 <input type="number" id="saSafety" value="${params.safetyDays}" min="1" max="365"></label>
         <label>运输时间（采购+物流）天 <input type="number" id="saTransit" value="${params.transitDays}" min="1" max="365"></label>
         <label>补货增量系数 <input type="number" id="saMultiplier" value="${params.multiplier}" min="0.5" max="5" step="0.1"></label>
+        <label class="sa-onlyneed"><input type="checkbox" id="saOnlyNeed" ${pageState.onlyNeed ? 'checked' : ''}> 只看需补货的（隐藏「暂无补货必要」）</label>
       </div>
     </div>
 
@@ -374,6 +379,13 @@ function bindEvents(container, ctx, visible, filteredList) {
     el.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handler(); }
     });
+  });
+
+  // 只看需补货的开关
+  container.querySelector('#saOnlyNeed')?.addEventListener('change', (e) => {
+    pageState.onlyNeed = e.target.checked;
+    pageState.visible = PAGE_SIZE;
+    ctx.rerender();
   });
 
   // 加载更多 / 收起

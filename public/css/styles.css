@@ -1930,3 +1930,67 @@ html, body {
 .an-product-meta b { color: var(--text); }
 .an-product-actions { display: flex; gap: 8px; margin-top: 10px; }
 .an-product-actions .btn { box-shadow: none; }
+
+/* ===== 库存预警 ===== */
+.sa-wrap { max-width: 1080px; }
+.sa-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+.sa-toolbar-info { font-size: 12.5px; color: var(--text-sub); }
+.sa-toolbar-actions { display: flex; gap: 8px; }
+
+.sa-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 18px; }
+.sa-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 18px 16px; display: flex; align-items: center; gap: 14px; }
+.sa-card-ico { width: 44px; height: 44px; border-radius: 13px; display: flex; align-items: center; justify-content: center; flex: none; }
+.sa-card-ico svg { width: 22px; height: 22px; }
+.sa-card-num { font-size: 30px; font-weight: 800; line-height: 1; }
+.sa-card-label { font-size: 13px; color: var(--text-sub); margin-top: 3px; }
+.sa-card-red .sa-card-ico { background: var(--red-soft); color: var(--red); }
+.sa-card-red .sa-card-num { color: var(--red); }
+.sa-card-yellow .sa-card-ico { background: #FFF4DC; color: #D98A00; }
+.sa-card-yellow .sa-card-num { color: #D98A00; }
+.sa-card-green .sa-card-ico { background: var(--green-soft); color: var(--green); }
+.sa-card-green .sa-card-num { color: var(--green); }
+
+.sa-section { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 18px; margin-bottom: 16px; }
+.sa-section-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; font-size: 15px; font-weight: 800; color: var(--text); }
+
+.sa-alert { border: 1px solid var(--border); border-radius: var(--radius-md); padding: 14px 16px; margin-bottom: 12px; }
+.sa-alert-red { border-left: 4px solid var(--red); background: #FFF9F9; }
+.sa-alert-yellow { border-left: 4px solid #E8B73E; background: #FFFDF7; }
+.sa-alert-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.sa-badge { display: inline-flex; align-items: center; font-size: 11.5px; font-weight: 700; border-radius: 20px; padding: 3px 10px; flex: none; }
+.sa-badge-red { background: var(--red-soft); color: var(--red); }
+.sa-badge-yellow { background: #FFF4DC; color: #B97A00; }
+.sa-alert-sku { font-size: 15px; font-weight: 800; color: var(--text); }
+.sa-alert-name { font-size: 13px; color: var(--text-sub); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sa-alert-meta { margin-top: 9px; font-size: 12.5px; color: var(--text-sub); line-height: 1.7; }
+.sa-alert-meta b { color: var(--text); }
+.sa-alert-risk { margin-top: 7px; font-size: 12.5px; font-weight: 600; line-height: 1.7; }
+.sa-alert-red .sa-alert-risk { color: var(--red); }
+.sa-alert-yellow .sa-alert-risk { color: #B97A00; }
+.sa-alert-suggest { margin-top: 6px; font-size: 13px; color: var(--text); line-height: 1.7; }
+.sa-alert-suggest b { color: var(--green); }
+.sa-alert-actions { display: flex; gap: 8px; margin-top: 10px; align-items: center; flex-wrap: wrap; }
+.sa-alert-actions .btn { box-shadow: none; }
+.sa-done { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 600; color: var(--green); }
+.sa-done svg { width: 14px; height: 14px; }
+
+.sa-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+.sa-summary-item { background: var(--card-soft); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 14px; display: flex; flex-direction: column; gap: 4px; }
+.sa-summary-item b { font-size: 22px; font-weight: 800; color: var(--text); }
+.sa-summary-item span { font-size: 12px; color: var(--text-sub); }
+
+.sa-params { display: flex; gap: 14px; flex-wrap: wrap; }
+.sa-params label { display: flex; flex-direction: column; gap: 6px; font-size: 12.5px; color: var(--text-sub); font-weight: 600; }
+.sa-params input { width: 130px; font-size: 14px; padding: 8px 10px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); background: var(--card); color: var(--text); }
+.sa-tip { margin-top: 12px; font-size: 12px; color: var(--text-faint); line-height: 1.7; }
+
+.sa-empty { text-align: center; padding: 42px 16px; color: var(--text-faint); font-size: 13px; }
+.sa-empty-ico { margin-bottom: 10px; }
+.sa-empty-ico svg { width: 40px; height: 40px; }
+
+:root[data-mode="dark"] .sa-card-yellow .sa-card-ico { background: #3A2E14; color: #FFC24B; }
+:root[data-mode="dark"] .sa-card-yellow .sa-card-num { color: #FFC24B; }
+:root[data-mode="dark"] .sa-badge-yellow { background: #3A2E14; color: #FFC24B; }
+:root[data-mode="dark"] .sa-alert-red { background: #241313; border-color: #4A2424; }
+:root[data-mode="dark"] .sa-alert-yellow { background: #241D0F; border-color: #4A3A1A; border-left-color: #E8B73E; }
+:root[data-mode="dark"] .sa-alert-yellow .sa-alert-risk { color: #FFC24B; }

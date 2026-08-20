@@ -309,23 +309,16 @@ function alertCard(a) {
     : a.risk === 'warning'
       ? '<span class="sa-badge sa-badge-yellow">🟡 即将断货</span>'
       : '<span class="sa-badge sa-badge-ok">🟢 库存充足</span>';
-  let actions;
-  if (a.risk === 'ok') {
-    actions = '<span class="sa-done-muted">暂无补货需求</span>';
-  } else {
-    const poDone = a.op.poAt;
-    actions = (poDone
-      ? `<span class="sa-done">${icon('check')} 已生成采购单 ${esc(shortTime(a.op.poAt))}</span>`
-      : `<button class="btn btn-sm btn-primary" data-po="${esc(a.sku)}">${icon('file')} 生成采购单</button>`) +
-      `<button class="btn btn-sm btn-ghost" data-restock="${esc(a.sku)}">🔔 已补货</button>`;
-  }
+  const meta = a.risk === 'ok'
+    ? '<span class="sa-done-muted">暂无补货需求</span>'
+    : '';
   return `
   <div class="sa-alert sa-alert-${a.risk}">
     <div class="sa-alert-head">
       ${badge}
       <b class="sa-alert-sku">${esc(a.sku)}</b>
       <span class="sa-alert-name">${esc(a.name)}</span>
-      <div class="sa-alert-actions-inline">${actions}</div>
+      <div class="sa-alert-actions-inline">${meta}</div>
     </div>
     <div class="sa-alert-meta">
       可售 <b>${fmtInt(a.fbaStock)}</b> · 在途 <b>${fmtInt(a.fbaInTransit)}</b> · 日销 <b>${round2(a.dailySales)}</b>
@@ -396,38 +389,6 @@ function bindEvents(container, ctx, visible, filteredList) {
       pageState.visible = PAGE_SIZE;
     }
     ctx.rerender();
-  });
-
-  container.querySelectorAll('[data-po]').forEach((el) => {
-    el.addEventListener('click', () => {
-      const sku = el.dataset.po;
-      confirmDialog({
-        title: '生成采购单',
-        message: `确认已为 ${sku} 生成采购单？生成后将记录时间。`,
-        confirmText: '已生成',
-        onConfirm: () => {
-          markPoGenerated(sku);
-          toastSuccess('已记录采购单');
-          ctx.rerender();
-        },
-      });
-    });
-  });
-
-  container.querySelectorAll('[data-restock]').forEach((el) => {
-    el.addEventListener('click', () => {
-      const sku = el.dataset.restock;
-      confirmDialog({
-        title: '确认补货',
-        message: `确认 ${sku} 已补货？确认后该条将从清单移出。`,
-        confirmText: '已补货',
-        onConfirm: () => {
-          markRestocked(sku);
-          toastSuccess('已标记补货完成');
-          ctx.rerender();
-        },
-      });
-    });
   });
 
   container.querySelector('#saShowDone')?.addEventListener('click', () => {

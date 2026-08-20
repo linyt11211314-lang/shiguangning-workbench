@@ -108,7 +108,7 @@ export function buildAlerts(data, params, ops) {
       suggested = Math.round(suggested);
       if (suggested <= 0) {
         suggested = 0;
-        suggestedNote = '在途/现有库存已可覆盖目标，暂无需补货';
+        suggestedNote = sales30 <= 0 ? '近30天无销量，暂无补货必要' : '在途/现有库存已可覆盖目标，暂无需补货';
       }
     }
 

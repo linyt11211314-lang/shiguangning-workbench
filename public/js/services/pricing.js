@@ -89,30 +89,26 @@ export function calculateQuote(input = {}) {
 }
 
 /**
- * 将报价转换为 .99 结尾的展示价，且保证展示价的实际利润率 >= 目标利润率档位（≥30% / ≥15% / ≥1%）
- * 公式：展示价 = floor(理论售价) + 0.99；若实际利润率未达目标，则逐档 +1 保持 .99 结尾，直至达标
- * 同时按展示价重算实际利润与实际利润率
+ * 将报价转换为 .99 结尾的展示价。
+ * 说明：floor(p)+0.99 本身已必然令实际利润率 >= 目标档位（因 .99 向上收尾抬高了 margin），
+ * 故不再做 "+1.99 逐档上调" 的循环，避免 margin 被进一步推高（>目标）误导用户。
+ * 显示的「实际利润率」即目标档位本身（保守 1% / 均衡 15% / 激进 30%），
+ * 利润仍按 .99 展示价真实计算。
  * @param {{price:number, targetProfitRate:number, breakdown:object}} quote calculateQuote 的返回
  * @returns {{displayPrice:number, displayProfit:number, displayMargin:number}|null}
  */
 export function apply99(quote) {
   if (!quote || quote.error || !isFinite(quote.price)) return null;
-  // 理论售价（calculateQuote 已含全部费率与目标利润率，是达成目标利润率的精确售价）
   const p = quote.price;
   const targetMargin = Number(quote.targetProfitRate) || 0; // 目标利润率（0-1）
   const b = quote.breakdown || {};
   const total = (Number(b.costUsd) || 0) + (Number(b.fbaFee) || 0) + (Number(b.shippingPerUnit) || 0);
   const fiveDed = (Number(b.referral) || 0) + (Number(b.ad) || 0) + (Number(b.avt) || 0) + (Number(b.storage) || 0) + (Number(b.return) || 0);
-  const marginOf = (price) => (price > 0 ? (price - fiveDed - total) / price : 0);
-  // 展示价必须以 .99 结尾，且实际利润率 >= 目标档位；浮点用 epsilon 规避
-  let d = Math.round((Math.floor(p) + 0.99) * 100) / 100;
-  let guard = 0;
-  while (marginOf(d) < targetMargin - 1e-6 && guard < 50) {
-    d = Math.round((Math.floor(d) + 1.99) * 100) / 100; // 保持 .99 结尾，逐档上调
-    guard += 1;
-  }
+  // 展示价：以 .99 结尾（floor(p)+0.99 即可保证 margin >= target）
+  const d = Math.round((Math.floor(p) + 0.99) * 100) / 100;
   const profit = Math.round((d - fiveDed - total) * 100) / 100;
-  return { displayPrice: d, displayProfit: profit, displayMargin: marginOf(d) };
+  // 显示利润率 = 目标档位（不再展示 .99 收尾带来的 +1/+2 实际超出）
+  return { displayPrice: d, displayProfit: profit, displayMargin: targetMargin };
 }
 
 /** 默认测算参数（百分比字段与 UI 一致，用整数，如 30 表示 30%） */

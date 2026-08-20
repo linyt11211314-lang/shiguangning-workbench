@@ -16,6 +16,10 @@ import {
 } from '../store/stockAlertStore.js';
 import { autoMap, buildRows, MAX_UPLOAD_MB, ACCEPT } from '../services/dataImport.js';
 
+/* ===================== 页面状态 ===================== */
+const PAGE_SIZE = 30;
+const pageState = { filter: 'pending', visible: PAGE_SIZE };
+
 /* ===================== 工具 ===================== */
 function num(v) {
   if (v === '' || v == null) return 0;
@@ -180,16 +184,36 @@ export function render(container, ctx) {
   const ops = getOps();
   const data = getStockData();
   const alerts = buildAlerts(data, params, ops);
-  const pending = alerts.filter((a) => a.risk !== 'ok' && !a.op.restockedAt);
+
+  // 按状态分组（待补货的排除已补货）
+  const allCritical = alerts.filter((a) => a.risk === 'critical' && !a.op.restockedAt);
+  const allWarning = alerts.filter((a) => a.risk === 'warning' && !a.op.restockedAt);
+  const allOk = alerts.filter((a) => a.risk === 'ok');
+  const allPending = [...allCritical, ...allWarning];
+
+  const cntAll = allPending.length;
+  const cntCritical = allCritical.length;
+  const cntWarning = allWarning.length;
+  const cntOk = allOk.length;
+
+  // 当前过滤
+  let filteredList;
+  if (pageState.filter === 'critical') filteredList = allCritical;
+  else if (pageState.filter === 'warning') filteredList = allWarning;
+  else if (pageState.filter === 'ok') filteredList = allOk;
+  else filteredList = allPending; // 'pending'
+
+  const totalSuggested = filteredList.reduce((s, a) => s + a.suggested, 0);
+  const totalCost = filteredList.reduce((s, a) => s + a.suggested * a.cost, 0);
+  const criticalCount = filteredList.filter((a) => a.risk === 'critical').length;
+  const hasCost = filteredList.some((a) => a.cost > 0);
+
+  const visible = filteredList.slice(0, pageState.visible);
+  const hasMore = filteredList.length > pageState.visible;
+  const showCollapse = !hasMore && pageState.visible > PAGE_SIZE && filteredList.length > PAGE_SIZE;
+
   const processedCount = alerts.filter((a) => a.risk !== 'ok' && a.op.restockedAt).length;
-
-  const cnt = { critical: 0, warning: 0, ok: 0 };
-  for (const a of alerts) cnt[a.risk]++;
-
-  const totalSuggested = pending.reduce((s, a) => s + a.suggested, 0);
-  const totalCost = pending.reduce((s, a) => s + a.suggested * a.cost, 0);
-  const criticalCount = pending.filter((a) => a.risk === 'critical').length;
-  const hasCost = pending.some((a) => a.cost > 0);
+  const filterLabel = { pending: '全部待补货', critical: '需立即补货', warning: '即将断货', ok: '库存充足' }[pageState.filter];
 
   container.innerHTML = `
   <div class="sa-wrap">
@@ -207,99 +231,112 @@ export function render(container, ctx) {
       </div>
     </div>
 
-    <div class="sa-cards">
-      <div class="sa-card sa-card-red">
-        <div class="sa-card-ico">${icon('alert')}</div>
-        <div class="sa-card-num">${cnt.critical}</div>
-        <div class="sa-card-label">需立即补货</div>
-      </div>
-      <div class="sa-card sa-card-yellow">
-        <div class="sa-card-ico">${icon('clock')}</div>
-        <div class="sa-card-num">${cnt.warning}</div>
-        <div class="sa-card-label">即将断货</div>
-      </div>
-      <div class="sa-card sa-card-green">
-        <div class="sa-card-ico">${icon('checkCircle')}</div>
-        <div class="sa-card-num">${cnt.ok}</div>
-        <div class="sa-card-label">库存充足</div>
-      </div>
-    </div>
-
-    <div class="sa-section">
+    <div class="sa-section sa-section-params">
       <div class="sa-section-head">
-        <span>📋 补货建议清单（按断货紧急程度排序）</span>
-        ${processedCount > 0 ? `<button class="btn btn-ghost btn-sm" id="saShowDone">已处理 ${processedCount} 条 · 清除记录</button>` : ''}
-      </div>
-      ${pending.length
-        ? pending.map(alertCard).join('')
-        : `<div class="sa-empty">
-             <div class="sa-empty-ico">${icon(data ? 'checkCircle' : 'upload')}</div>
-             <div>${data ? '所有在售产品库存充足，暂无补货建议' : '导入库存表格后，这里将按紧急程度列出补货建议'}</div>
-           </div>`}
-    </div>
-
-    <div class="sa-section">
-      <div class="sa-section-head">
-        <span>📊 补货计划汇总</span>
-        <button class="btn btn-soft btn-sm" id="saExportBtn">${icon('download')} 导出补货清单 (Excel)</button>
-      </div>
-      <div class="sa-summary">
-        <div class="sa-summary-item"><b>${pending.length}</b><span>建议补货 SKU</span></div>
-        <div class="sa-summary-item"><b>${fmtInt(totalSuggested)}</b><span>建议补货总量（件）</span></div>
-        <div class="sa-summary-item"><b>${hasCost ? '¥' + fmtInt(totalCost) : '—'}</b><span>${hasCost ? '预估采购金额' : '预估金额（表格需含成本列）'}</span></div>
-        <div class="sa-summary-item"><b>${criticalCount}</b><span>紧急补货 SKU</span></div>
-      </div>
-    </div>
-
-    <div class="sa-section">
-      <div class="sa-section-head">
-        <span>⚙️ 参数设置</span>
-        <button class="btn btn-primary btn-sm" id="saSaveParams">保存参数</button>
+        <span>⚙️ 参数设置 <span class="sa-section-sub">建议补货量 = 日均销量 × (运输+安全) × 系数 − 在途</span></span>
+        <button class="btn btn-primary btn-sm" id="saSaveParams">保存并重算</button>
       </div>
       <div class="sa-params">
         <label>安全库存天数 <input type="number" id="saSafety" value="${params.safetyDays}" min="1" max="365"></label>
-        <label>运输时间（采购+物流）<input type="number" id="saTransit" value="${params.transitDays}" min="1" max="365"></label>
+        <label>运输时间（采购+物流）天 <input type="number" id="saTransit" value="${params.transitDays}" min="1" max="365"></label>
         <label>补货增量系数 <input type="number" id="saMultiplier" value="${params.multiplier}" min="0.5" max="5" step="0.1"></label>
       </div>
-      <div class="sa-tip">建议补货量 = 日均销量 × (运输时间 + 安全库存天数) × 增量系数 − 在途库存（至少覆盖运输期消耗）</div>
+    </div>
+
+    <div class="sa-cards">
+      <div class="sa-card sa-card-clickable ${pageState.filter==='pending'?'sa-card-active':''}" data-filter="pending" role="button" tabindex="0">
+        <div class="sa-card-ico">${icon('list')}</div>
+        <div class="sa-card-body"><div class="sa-card-num">${cntAll}</div><div class="sa-card-label">全部待补货</div></div>
+      </div>
+      <div class="sa-card sa-card-clickable ${pageState.filter==='critical'?'sa-card-active':''}" data-filter="critical" role="button" tabindex="0">
+        <div class="sa-card-ico">${icon('alert')}</div>
+        <div class="sa-card-body"><div class="sa-card-num">${cntCritical}</div><div class="sa-card-label">需立即补货</div></div>
+      </div>
+      <div class="sa-card sa-card-clickable ${pageState.filter==='warning'?'sa-card-active':''}" data-filter="warning" role="button" tabindex="0">
+        <div class="sa-card-ico">${icon('clock')}</div>
+        <div class="sa-card-body"><div class="sa-card-num">${cntWarning}</div><div class="sa-card-label">即将断货</div></div>
+      </div>
+      <div class="sa-card sa-card-clickable ${pageState.filter==='ok'?'sa-card-active':''}" data-filter="ok" role="button" tabindex="0">
+        <div class="sa-card-ico">${icon('checkCircle')}</div>
+        <div class="sa-card-body"><div class="sa-card-num">${cntOk}</div><div class="sa-card-label">库存充足</div></div>
+      </div>
+    </div>
+
+    <div class="sa-section">
+      <div class="sa-section-head">
+        <span>📋 补货建议清单 · ${esc(filterLabel)}（${filteredList.length} 条）</span>
+        <div class="sa-section-head-right">
+          ${processedCount > 0 ? `<button class="btn btn-ghost btn-sm" id="saShowDone">已处理 ${processedCount} · 清除</button>` : ''}
+          <button class="btn btn-soft btn-sm" id="saExportBtn" ${filteredList.length ? '' : 'disabled'}>${icon('download')} 导出 Excel</button>
+        </div>
+      </div>
+      ${
+        !data
+          ? `<div class="sa-empty"><div class="sa-empty-ico">${icon('upload')}</div><div>导入库存表格后，这里将按当前筛选状态列出 SKU</div></div>`
+          : filteredList.length === 0
+            ? `<div class="sa-empty"><div class="sa-empty-ico">${icon('checkCircle')}</div><div>当前筛选下没有匹配的 SKU</div></div>`
+            : visible.map(alertCard).join('') +
+              (hasMore
+                ? `<div class="sa-list-more"><button class="btn btn-soft btn-sm" id="saLoadMore">加载更多（剩余 ${filteredList.length - visible.length} 条）</button></div>`
+                : (showCollapse
+                    ? `<div class="sa-list-more"><button class="btn btn-ghost btn-sm" id="saLoadMore">收起（仅显示前 ${PAGE_SIZE} 条）</button></div>`
+                    : ''))
+      }
+    </div>
+
+    <div class="sa-section">
+      <div class="sa-section-head"><span>📊 补货计划汇总 · ${esc(filterLabel)}</span></div>
+      <div class="sa-summary">
+        <div class="sa-summary-item"><b>${filteredList.length}</b><span>SKU 数</span></div>
+        <div class="sa-summary-item"><b>${fmtInt(totalSuggested)}</b><span>建议补货总量（件）</span></div>
+        <div class="sa-summary-item"><b>${hasCost ? '¥' + fmtInt(totalCost) : '—'}</b><span>${hasCost ? '预估采购金额' : '金额（需成本列）'}</span></div>
+        <div class="sa-summary-item"><b>${criticalCount}</b><span>紧急补货</span></div>
+      </div>
     </div>
   </div>`;
 
-  bindEvents(container, ctx, pending, params);
+  bindEvents(container, ctx, visible, filteredList);
 }
 
 function alertCard(a) {
   const badge = a.risk === 'critical'
     ? '<span class="sa-badge sa-badge-red">🔴 需立即补货</span>'
-    : '<span class="sa-badge sa-badge-yellow">🟡 即将断货</span>';
-  const poDone = a.op.poAt;
+    : a.risk === 'warning'
+      ? '<span class="sa-badge sa-badge-yellow">🟡 即将断货</span>'
+      : '<span class="sa-badge sa-badge-ok">🟢 库存充足</span>';
+  let actions;
+  if (a.risk === 'ok') {
+    actions = '<span class="sa-done-muted">暂无补货需求</span>';
+  } else {
+    const poDone = a.op.poAt;
+    actions = (poDone
+      ? `<span class="sa-done">${icon('check')} 已生成采购单 ${esc(shortTime(a.op.poAt))}</span>`
+      : `<button class="btn btn-sm btn-primary" data-po="${esc(a.sku)}">${icon('file')} 生成采购单</button>`) +
+      `<button class="btn btn-sm btn-ghost" data-restock="${esc(a.sku)}">🔔 已补货</button>`;
+  }
   return `
-  <div class="sa-alert ${a.risk === 'critical' ? 'sa-alert-red' : 'sa-alert-yellow'}">
+  <div class="sa-alert sa-alert-${a.risk}">
     <div class="sa-alert-head">
       ${badge}
       <b class="sa-alert-sku">${esc(a.sku)}</b>
       <span class="sa-alert-name">${esc(a.name)}</span>
+      <div class="sa-alert-actions-inline">${actions}</div>
     </div>
     <div class="sa-alert-meta">
-      可售 <b>${fmtInt(a.fbaStock)}</b> ｜ 在途 <b>${fmtInt(a.fbaInTransit)}</b> ｜ 日销 <b>${round2(a.dailySales)}</b>
-      ｜ 预计可售 <b>${fmtDays(a.daysOfStock)} 天</b> ｜ 预计断货 <b>${shortDate(a.outOfStockDate)}</b>
+      可售 <b>${fmtInt(a.fbaStock)}</b> · 在途 <b>${fmtInt(a.fbaInTransit)}</b> · 日销 <b>${round2(a.dailySales)}</b>
+      · 预计可售 <b>${fmtDays(a.daysOfStock)} 天</b> · 断货 <b>${shortDate(a.outOfStockDate)}</b>
     </div>
+    ${a.risk !== 'ok' ? `
     <div class="sa-alert-risk">${esc(a.riskMessage)}</div>
     <div class="sa-alert-suggest">
       ${a.suggested > 0
-        ? `补货建议：<b>${fmtInt(a.suggested)} 件</b> ｜ 预计到仓 ${shortDate(a.arrivalDate)}`
+        ? `补货建议：<b>${fmtInt(a.suggested)} 件</b> · 到仓 ${shortDate(a.arrivalDate)}`
         : (a.suggestedNote || '补货建议：暂无需补货')}
-    </div>
-    <div class="sa-alert-actions">
-      ${poDone
-        ? `<span class="sa-done">${icon('check')} 已生成采购单 ${esc(shortTime(a.op.poAt))}</span>`
-        : `<button class="btn btn-sm btn-primary" data-po="${esc(a.sku)}">${icon('file')} 生成采购单</button>`}
-      <button class="btn btn-sm btn-ghost" data-restock="${esc(a.sku)}">🔔 已补货</button>
-    </div>
+    </div>` : ''}
   </div>`;
 }
 
-function bindEvents(container, ctx, pending, params) {
+function bindEvents(container, ctx, visible, filteredList) {
   container.querySelector('#saImportBtn')?.addEventListener('click', () => {
     container.querySelector('#saFile')?.click();
   });
@@ -323,6 +360,29 @@ function bindEvents(container, ctx, pending, params) {
 
   container.querySelector('#saRefreshBtn')?.addEventListener('click', () => {
     toastInfo('已重新计算补货建议');
+    ctx.rerender();
+  });
+
+  // 卡片点击 → 筛选
+  container.querySelectorAll('[data-filter]').forEach((el) => {
+    const handler = () => {
+      pageState.filter = el.dataset.filter;
+      pageState.visible = PAGE_SIZE;
+      ctx.rerender();
+    };
+    el.addEventListener('click', handler);
+    el.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handler(); }
+    });
+  });
+
+  // 加载更多 / 收起
+  container.querySelector('#saLoadMore')?.addEventListener('click', () => {
+    if (filteredList.length > pageState.visible) {
+      pageState.visible = Math.min(pageState.visible + PAGE_SIZE, filteredList.length);
+    } else {
+      pageState.visible = PAGE_SIZE;
+    }
     ctx.rerender();
   });
 
@@ -384,13 +444,13 @@ function bindEvents(container, ctx, pending, params) {
   });
 
   container.querySelector('#saExportBtn')?.addEventListener('click', () => {
-    exportExcel(pending, params);
+    exportExcel(filteredList);
   });
 }
 
 /* ===================== 导出 Excel ===================== */
 function exportExcel(pending) {
-  if (!pending.length) { toastInfo('当前没有待处理补货清单，无需导出'); return; }
+  if (!pending.length) { toastInfo('当前筛选下没有可导出的 SKU'); return; }
   if (typeof XLSX === 'undefined') { toastError('Excel 组件未加载，请刷新页面重试'); return; }
   const head = ['SKU', '品名', 'FBA-可售', 'FBA-在途', '近30天销量', '日均销量', '预计可售天数', '预计断货日期', '风险等级', '断货风险提示', '建议补货量', '预计到仓日期', '采购成本', '预估采购金额'];
   const aoa = [head];

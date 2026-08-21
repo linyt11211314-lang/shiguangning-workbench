@@ -11,6 +11,7 @@ const REPORT_KEY = 'sgn.profit.report';
 const PURCHASE_KEY = 'sgn.profit.purchase';
 const OVERRIDE_KEY = 'sgn.profit.costOverride';
 const HEAD_OVERRIDE_KEY = 'sgn.profit.headOverride';
+const SITE_FILTER_KEY = 'sgn.profit.siteFilter';
 
 /** 默认参数：汇率采用此前人工核算口径（1 CNY = X 本地币） */
 export const DEFAULT_PARAMS = {
@@ -18,6 +19,9 @@ export const DEFAULT_PARAMS = {
   rateAED: 0.5137,   // 1 CNY = 0.5137 AED
   rateSAR: 0.5245,   // 1 CNY = 0.5245 SAR
 };
+
+/** 站点筛选可选值 */
+export const SITE_FILTERS = ['all', 'AE', 'SA'];
 
 function clampNum(v, min, max, fallback) {
   const n = Number(v);
@@ -121,4 +125,19 @@ export function setHeadOverride(msku, value) {
   else map[msku] = ratio; // 存储为比例（如 0.06 表示 6%）
   saveHeadOverrides(map);
   return map;
+}
+
+/* ===================== 站点筛选（影响 TOP/亏损/广告/明细） ===================== */
+/** 站点筛选：'all' = 全部，'AE' = 仅 AED 站（AE 站），'SA' = 仅 SAR 站（SA 站） */
+export function getSiteFilter() {
+  try {
+    const v = String(localStorage.getItem(SITE_FILTER_KEY) || 'all').toUpperCase();
+    return SITE_FILTERS.includes(v) ? v : 'all';
+  } catch (_) { return 'all'; }
+}
+export function setSiteFilter(value) {
+  const v = String(value || 'all').toUpperCase();
+  const safe = SITE_FILTERS.includes(v) ? v : 'all';
+  try { localStorage.setItem(SITE_FILTER_KEY, safe); } catch (_) {}
+  return safe;
 }

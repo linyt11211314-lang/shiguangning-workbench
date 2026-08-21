@@ -14,6 +14,7 @@ import {
   getPurchaseData, savePurchaseData,
   getCostOverrides, setCostOverride,
   getHeadOverrides, setHeadOverride,
+  getSiteFilter, setSiteFilter,
 } from '../store/profitStore.js';
 import { parseProfitFile, parsePurchaseFile, computeProfit } from '../services/profitCalc.js';
 
@@ -84,11 +85,19 @@ export function render(container, ctx) {
   const purchase = getPurchaseData();
   const overrides = getCostOverrides();
   const headOverrides = getHeadOverrides();
+  const siteFilter = getSiteFilter(); // 'all' | 'AE' | 'SA'
 
   const hasReport = !!(report && report.rows && report.rows.length);
   const result = hasReport
     ? computeProfit(report.rows, purchase ? purchase.map : {}, overrides, headOverrides, params)
     : null;
+
+  // 站点筛选只作用于 SKU 维度的表（TOP/亏损/广告/明细）；KPI 与分站点汇总保持全量
+  const filterRows = (rows) => (siteFilter === 'all' ? rows : rows.filter((r) => r.site === siteFilter));
+  const viewTop = result ? filterRows(result.topProfit) : [];
+  const viewLoss = result ? filterRows(result.loss) : [];
+  const viewAd = result ? filterRows(result.adTop) : [];
+  const viewRows = result ? filterRows(result.rows) : [];
 
   container.innerHTML = `
   <div class="pf-wrap">
@@ -114,13 +123,13 @@ export function render(container, ctx) {
         <div>请先「导入利润报表」开始分析；若需补扣采购成本，再导入「采购单」。</div>
       </div>
     ` : `
-      ${renderParams(params)}
+      ${renderParams(params, siteFilter)}
       ${renderKPI(result.kpi)}
       ${renderSite(result.siteStats)}
-      ${renderTopProfit(result.topProfit)}
-      ${renderLoss(result.loss)}
-      ${renderAd(result.adTop)}
-      ${renderDetail(result.rows, overrides, headOverrides, purchase ? purchase.map : {})}
+      ${renderTopProfit(viewTop)}
+      ${renderLoss(viewLoss)}
+      ${renderAd(viewAd)}
+      ${renderDetail(viewRows, overrides, headOverrides, purchase ? purchase.map : {})}
     `}
   </div>`;
 
@@ -128,7 +137,12 @@ export function render(container, ctx) {
 }
 
 /* ===================== 参数卡（可手动改成本） ===================== */
-function renderParams(p) {
+function renderParams(p, siteFilter) {
+  const opts = [
+    { v: 'all', label: '全部站点' },
+    { v: 'AE',  label: 'AE 站（AED）' },
+    { v: 'SA',  label: 'SA 站（SAR）' },
+  ];
   return `
   <div class="sa-section sa-section-params">
     <div class="sa-section-head">
@@ -139,6 +153,11 @@ function renderParams(p) {
       <label>头程费率 (%) <input type="number" id="pfHead" value="${(p.headRate * 100).toFixed(2)}" min="0" max="50" step="0.1"></label>
       <label>汇率 1 CNY = AED <input type="number" id="pfRateAED" value="${p.rateAED}" min="0.0001" max="10" step="0.0001"></label>
       <label>汇率 1 CNY = SAR <input type="number" id="pfRateSAR" value="${p.rateSAR}" min="0.0001" max="10" step="0.0001"></label>
+      <label>站点筛选
+        <select id="pfSiteFilter" class="listing-select pf-filter-select" title="只影响 TOP10 / 亏损 / 广告 / 明细；KPI 与分站点保持全量">
+          ${opts.map((o) => `<option value="${o.v}"${siteFilter === o.v ? ' selected' : ''}>${o.label}</option>`).join('')}
+        </select>
+      </label>
     </div>
   </div>`;
 }
@@ -196,7 +215,12 @@ function renderTopProfit(rows) {
 /* ===================== 亏损预警（仅销量>0） ===================== */
 function renderLoss(rows) {
   const withSale = rows.filter((r) => r.qty > 0);
-  if (!withSale.length) return section('✅ 亏损预警（有销量）', `<div class="pf-note pf-pos">当前有销量的 SKU 全部盈利（零销量纯费用亏损已过滤）。</div>`);
+  if (!withSale.length) {
+    const empty = getSiteFilter() === 'all'
+      ? '当前有销量的 SKU 全部盈利（零销量纯费用亏损已过滤）。'
+      : `当前站点下有销量的 SKU 全部盈利。`;
+    return section('✅ 亏损预警（有销量）', `<div class="pf-note pf-pos">${empty}</div>`);
+  }
   const sorted = applySort(withSale, 'loss');
   const disp = sorted.slice(0, LOSS_DISPLAY);
   const body = disp.map((r) => {
@@ -413,6 +437,14 @@ function bindEvents(container, ctx) {
 
   container.querySelector('#pfToggleDetail')?.addEventListener('click', () => {
     detailShowAll = !detailShowAll;
+    ctx.rerender();
+  });
+
+  // 站点筛选（只影响 TOP / 亏损 / 广告 / 明细；KPI 与分站点保持全量）
+  container.querySelector('#pfSiteFilter')?.addEventListener('change', (e) => {
+    const next = setSiteFilter(e.target.value);
+    e.target.value = next;
+    toastInfo(next === 'all' ? '已恢复全部站点' : `已筛选 ${next} 站`);
     ctx.rerender();
   });
 

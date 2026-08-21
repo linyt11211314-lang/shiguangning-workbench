@@ -160,27 +160,24 @@ function renderList(container, { navigate, rerender }) {
       <button class="btn btn-primary" data-new>${icon('plus')} 创建 Listing</button>
     </div>
 
-    <div class="card listing-toolbar">
+<div class="card listing-toolbar">
       <div class="listing-filter-group">
         <span class="listing-filter-label">使用状态</span>
-        <div class="listing-filter" role="tablist" aria-label="按使用状态筛选">
+        <select class="listing-select" data-filter aria-label="按使用状态筛选">
           ${filterOptions.map((o) => `
-            <button type="button" class="listing-filter-btn ${state.usedFilter === o.key ? 'active' : ''}" data-filter="${o.key}" role="tab" aria-selected="${state.usedFilter === o.key}">
-              <span>${esc(o.label)}</span>
-              <span class="listing-filter-count">${o.count}</span>
-            </button>`).join('')}
-        </div>
+            <option value="${o.key}" ${state.usedFilter === o.key ? 'selected' : ''}>${esc(o.label)}（${o.count}）</option>`).join('')}
+        </select>
       </div>
       <div class="listing-filter-group">
         <span class="listing-filter-label">站点</span>
-        <div class="listing-filter" role="tablist" aria-label="按站点筛选">
+        <select class="listing-select" data-site-filter aria-label="按站点筛选">
           ${siteOptions.map((o) => `
-            <button type="button" class="listing-filter-btn ${state.siteFilter === o.key ? 'active' : ''}" data-site-filter="${o.key}" role="tab" aria-selected="${state.siteFilter === o.key}">
-              <span>${esc(o.label)}</span>
-              <span class="listing-filter-count">${o.count}</span>
-            </button>`).join('')}
-        </div>
+            <option value="${o.key}" ${state.siteFilter === o.key ? 'selected' : ''}>${esc(o.label)}（${o.count}）</option>`).join('')}
+        </select>
       </div>
+      ${(state.usedFilter !== 'all' || state.siteFilter !== 'all') ? `
+        <button type="button" class="btn btn-soft btn-sm" data-reset-filter>查看全部</button>
+      ` : ''}
     </div>
     <div data-grid></div>
   `;
@@ -189,24 +186,38 @@ function renderList(container, { navigate, rerender }) {
   container.querySelector('[data-tester]').addEventListener('click', () => {
     window.open('/api-tester.html', '_blank', 'noopener');
   });
-  container.querySelectorAll('[data-filter]').forEach((el) => {
-    el.addEventListener('click', () => {
-      const next = el.dataset.filter;
+  const usedSelect = container.querySelector('select[data-filter]');
+  if (usedSelect) {
+    usedSelect.addEventListener('change', () => {
+      const next = usedSelect.value;
       if (state.usedFilter === next) return;
       state.usedFilter = next;
       try { localStorage.setItem('listing.usedFilter', next); } catch (_) { /* 隐私模式无 storage */ }
       rerender();
     });
-  });
-  container.querySelectorAll('[data-site-filter]').forEach((el) => {
-    el.addEventListener('click', () => {
-      const next = el.dataset.siteFilter;
+  }
+  const siteSelect = container.querySelector('select[data-site-filter]');
+  if (siteSelect) {
+    siteSelect.addEventListener('change', () => {
+      const next = siteSelect.value;
       if (state.siteFilter === next) return;
       state.siteFilter = next;
       try { localStorage.setItem('listing.siteFilter', next); } catch (_) { /* 隐私模式无 storage */ }
       rerender();
     });
-  });
+  }
+  const resetBtn = container.querySelector('[data-reset-filter]');
+  if (resetBtn) {
+    resetBtn.addEventListener('click', () => {
+      state.usedFilter = 'all';
+      state.siteFilter = 'all';
+      try {
+        localStorage.setItem('listing.usedFilter', 'all');
+        localStorage.setItem('listing.siteFilter', 'all');
+      } catch (_) {}
+      rerender();
+    });
+  }
 
   const grid = container.querySelector('[data-grid]');
   if (!allProjects.length) {

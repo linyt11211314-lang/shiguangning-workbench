@@ -20,6 +20,7 @@ let state = {
   project: null,         // 当前项目对象
   formData: null,        // 表单数据（未保存时的草稿）
   usedFilter: (typeof localStorage !== 'undefined' && localStorage.getItem('listing.usedFilter')) || 'all', // all | used | unused
+  siteFilter: (typeof localStorage !== 'undefined' && localStorage.getItem('listing.siteFilter')) || 'all', // all | US | JP | DE | ...
 };
 
 const EMPTY_FORM = () => ({
@@ -103,9 +104,11 @@ export function render(container, route, { navigate, rerender }) {
  * ============================================================ */
 function renderList(container, { navigate, rerender }) {
   const allProjects = listProjects();
+  const siteOf = (p) => ((p.productInfo && p.productInfo.site) || 'US');
   const projects = allProjects.filter((p) => {
-    if (state.usedFilter === 'used') return Boolean(p.used);
-    if (state.usedFilter === 'unused') return !p.used;
+    if (state.usedFilter === 'used') { if (!Boolean(p.used)) return false; }
+    else if (state.usedFilter === 'unused') { if (Boolean(p.used)) return false; }
+    if (state.siteFilter !== 'all' && siteOf(p) !== state.siteFilter) return false;
     return true;
   });
   const usedCount = allProjects.filter((p) => Boolean(p.used)).length;
@@ -129,6 +132,12 @@ function renderList(container, { navigate, rerender }) {
     { key: 'used', label: '已使用', count: usedCount },
     { key: 'unused', label: '未使用', count: unusedCount },
   ];
+  const siteSet = new Set(allProjects.map(siteOf));
+  const sites = [...siteSet].sort();
+  const siteOptions = [
+    { key: 'all', label: '全部站点', count: allProjects.length },
+    ...sites.map((s) => ({ key: s, label: `${s} 站`, count: allProjects.filter((p) => siteOf(p) === s).length })),
+  ];
 
   container.innerHTML = `
     <div class="metrics-row" data-metrics>
@@ -147,15 +156,31 @@ function renderList(container, { navigate, rerender }) {
         <div style="font-size:14.5px;font-weight:700">Listing 项目</div>
         <div style="font-size:12.5px;color:var(--text-sub);margin-top:2px">刷新后仍在 · 随时打开继续编辑</div>
       </div>
-      <div class="listing-filter" role="tablist" aria-label="按使用状态筛选">
-        ${filterOptions.map((o) => `
-          <button type="button" class="listing-filter-btn ${state.usedFilter === o.key ? 'active' : ''}" data-filter="${o.key}" role="tab" aria-selected="${state.usedFilter === o.key}">
-            <span>${esc(o.label)}</span>
-            <span class="listing-filter-count">${o.count}</span>
-          </button>`).join('')}
-      </div>
       <button class="btn btn-ghost" data-tester title="POST /api/listing/generate 接口测试">${icon('link')} 接口测试台</button>
       <button class="btn btn-primary" data-new>${icon('plus')} 创建 Listing</button>
+    </div>
+
+    <div class="card listing-toolbar">
+      <div class="listing-filter-group">
+        <span class="listing-filter-label">使用状态</span>
+        <div class="listing-filter" role="tablist" aria-label="按使用状态筛选">
+          ${filterOptions.map((o) => `
+            <button type="button" class="listing-filter-btn ${state.usedFilter === o.key ? 'active' : ''}" data-filter="${o.key}" role="tab" aria-selected="${state.usedFilter === o.key}">
+              <span>${esc(o.label)}</span>
+              <span class="listing-filter-count">${o.count}</span>
+            </button>`).join('')}
+        </div>
+      </div>
+      <div class="listing-filter-group">
+        <span class="listing-filter-label">站点</span>
+        <div class="listing-filter" role="tablist" aria-label="按站点筛选">
+          ${siteOptions.map((o) => `
+            <button type="button" class="listing-filter-btn ${state.siteFilter === o.key ? 'active' : ''}" data-site-filter="${o.key}" role="tab" aria-selected="${state.siteFilter === o.key}">
+              <span>${esc(o.label)}</span>
+              <span class="listing-filter-count">${o.count}</span>
+            </button>`).join('')}
+        </div>
+      </div>
     </div>
     <div data-grid></div>
   `;
@@ -164,12 +189,21 @@ function renderList(container, { navigate, rerender }) {
   container.querySelector('[data-tester]').addEventListener('click', () => {
     window.open('/api-tester.html', '_blank', 'noopener');
   });
-  container.querySelectorAll('.listing-filter-btn').forEach((el) => {
+  container.querySelectorAll('[data-filter]').forEach((el) => {
     el.addEventListener('click', () => {
       const next = el.dataset.filter;
       if (state.usedFilter === next) return;
       state.usedFilter = next;
       try { localStorage.setItem('listing.usedFilter', next); } catch (_) { /* 隐私模式无 storage */ }
+      rerender();
+    });
+  });
+  container.querySelectorAll('[data-site-filter]').forEach((el) => {
+    el.addEventListener('click', () => {
+      const next = el.dataset.siteFilter;
+      if (state.siteFilter === next) return;
+      state.siteFilter = next;
+      try { localStorage.setItem('listing.siteFilter', next); } catch (_) { /* 隐私模式无 storage */ }
       rerender();
     });
   });
@@ -191,11 +225,13 @@ function renderList(container, { navigate, rerender }) {
     return;
   }
   if (!projects.length) {
-    const labels = { used: '已使用', unused: '未使用' };
+    const usedLabel = { all: '', used: '已使用', unused: '未使用' }[state.usedFilter] || '';
+    const siteLabel = state.siteFilter === 'all' ? '' : `${state.siteFilter} 站`;
+    const condText = [siteLabel, usedLabel].filter(Boolean).join(' · ');
     grid.innerHTML = `
       <div class="card"><div class="empty-state">
         <div class="empty-icon">${icon('box')}</div>
-        <div class="empty-title">没有「${esc(labels[state.usedFilter] || '')}」的 Listing 项目</div>
+        <div class="empty-title">${condText ? `没有符合「${esc(condText)}」的 Listing 项目` : '没有匹配的 Listing 项目'}</div>
         <div class="empty-sub">点击「全部」查看所有项目，或切换其它筛选条件</div>
         <div class="mt-16">
           <button class="btn btn-soft" data-reset-filter>查看全部</button>
@@ -204,7 +240,8 @@ function renderList(container, { navigate, rerender }) {
     const reset = grid.querySelector('[data-reset-filter]');
     if (reset) reset.addEventListener('click', () => {
       state.usedFilter = 'all';
-      try { localStorage.setItem('listing.usedFilter', 'all'); } catch (_) {}
+      state.siteFilter = 'all';
+      try { localStorage.setItem('listing.usedFilter', 'all'); localStorage.setItem('listing.siteFilter', 'all'); } catch (_) {}
       rerender();
     });
     return;

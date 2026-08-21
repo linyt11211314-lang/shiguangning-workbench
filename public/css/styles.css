@@ -2179,8 +2179,8 @@ html, body {
 .pf-table th, .pf-table td { padding: 8px 10px; border-bottom: 1px solid var(--border); text-align: left; white-space: nowrap; }
 .pf-table thead th { position: sticky; top: 0; background: var(--card-soft); color: var(--text-sub); font-weight: 700; z-index: 1; }
 .pf-table tbody tr:hover { background: var(--card-soft); }
-.pf-table .pf-num { text-align: right; font-variant-numeric: tabular-nums; }
-.pf-table .pf-rank { color: var(--text-faint); text-align: center; }
+.pf-table .pf-num { text-align: left; font-variant-numeric: tabular-nums; }
+.pf-table .pf-rank { color: var(--text-faint); text-align: left; }
 .pf-table .pf-ms { font-weight: 600; color: var(--text); }
 .pf-table .pf-cause { color: var(--text-sub); font-size: 12px; white-space: normal; }
 .pf-table .pf-name { max-width: 200px; }
@@ -2196,7 +2196,7 @@ html, body {
 
 .pf-cost-cell { padding: 2px 6px !important; }
 .pf-cost-input, .pf-head-input {
-  width: 92px; font-size: 13px; padding: 5px 7px; text-align: right;
+  width: 92px; font-size: 13px; padding: 5px 7px; text-align: left;
   border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
   background: var(--card); color: var(--text); font-variant-numeric: tabular-nums;
 }

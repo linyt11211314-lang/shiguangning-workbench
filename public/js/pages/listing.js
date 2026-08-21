@@ -211,39 +211,56 @@ function renderList(container, { navigate, rerender }) {
   }
 
   grid.innerHTML = `
-    <div class="project-grid">
-      ${projects.map((p) => {
-        const info = p.productInfo || {};
-        const statusTag = p.status === 'saved'
-          ? '<span class="tag tag-green">已保存</span>'
-          : p.status === 'generated' ? '<span class="tag tag-blue">已生成</span>'
-          : '<span class="tag">草稿</span>';
-        const used = Boolean(p.used);
-        const usedTag = used
-          ? '<span class="tag tag-green">✓ 已使用</span>'
-          : '<span class="tag">○ 未使用</span>';
-        return `
-        <div class="card project-card${used ? ' used' : ''}" data-open="${p.id}">
-          <div class="project-head">
-            ${info.image ? `<img class="project-thumb" src="${esc(info.image)}" alt="">` : '<div class="project-thumb no-img">无图</div>'}
-            <div style="min-width:0">
-              <div class="project-name">${esc(info.name || '未命名产品')}</div>
-              <div class="project-meta">${statusTag}${usedTag}<span>${esc(info.site || 'US')} 站</span></div>
+    <div class="card" style="overflow:visible">
+      <div class="ls-grid-table">
+        <div class="ls-table-head">
+          <span>产品图片</span>
+          <span>产品</span>
+          <span>内容生成</span>
+          <span>状态</span>
+          <span>使用状态</span>
+          <span>更新时间</span>
+          <span style="text-align:right">操作</span>
+        </div>
+        ${projects.map((p) => {
+          const info = p.productInfo || {};
+          const used = Boolean(p.used);
+          const statusTag = p.status === 'saved'
+            ? '<span class="tag tag-green">已保存</span>'
+            : p.status === 'generated' ? '<span class="tag tag-blue">已生成</span>'
+            : '<span class="tag">草稿</span>';
+          const usedTag = used
+            ? '<span class="tag tag-green">✓ 已使用</span>'
+            : '<span class="tag">○ 未使用</span>';
+          const titleMark = p.title ? '标题 ✓' : '标题 ·';
+          const bt = p.bulletPoints?.length ? `五点 ${p.bulletPoints.length} 条` : '';
+          const st = p.searchTerms?.length ? `关键词 ${p.searchTerms.length}` : '';
+          const contentSub = bt || st ? `${bt}${bt && st ? ' · ' : ''}${st}` : '尚未生成内容';
+          return `
+          <div class="ls-table-row" data-open="${p.id}" title="点击打开编辑">
+            ${info.image ? `<div class="lib-thumb-sm"><img src="${esc(info.image)}" alt=""></div>` : `<div class="lib-thumb-sm"><span class="no-img-sm">${icon('image')}</span></div>`}
+            <div class="lib-name-cell">
+              <div class="lib-name">${esc(info.name || '未命名产品')}</div>
+              <div style="display:flex;gap:6px;margin-top:4px;flex-wrap:wrap">
+                <span class="tag tag-blue">${esc(info.site || 'US')} 站</span>
+                ${used ? '<span class="tag tag-green">已用</span>' : ''}
+              </div>
             </div>
-          </div>
-          <div class="project-body">
-            ${p.title ? `<div class="pb-row"><b>标题</b><span class="pb-val">${esc(p.title)}</span></div>` : ''}
-            ${p.bulletPoints?.length ? `<div class="pb-row"><b>五点</b><span class="pb-val">${p.bulletPoints.length} 条已生成</span></div>` : ''}
-            ${p.searchTerms?.length ? `<div class="pb-row"><b>关键词</b><span class="pb-val">${p.searchTerms.length} 个已生成</span></div>` : ''}
-            <div class="pb-row"><b>更新</b><span class="pb-val">${timeAgo(p.updatedAt)}</span></div>
-          </div>
-          <div class="project-foot">
-            <button class="btn btn-primary btn-sm flex-1" data-open2="${p.id}">${icon('edit')} 打开编辑</button>
-            <button class="btn btn-${used ? 'soft' : 'ghost'} btn-sm" data-toggle-used="${p.id}" title="${used ? '取消已使用标记' : '标记为已使用'}">${used ? '✓ 已使用' : '○ 标记已用'}</button>
-            <button class="btn btn-danger-soft btn-sm" data-del="${p.id}" title="删除该项目">${icon('trash')} 删除</button>
-          </div>
-        </div>`;
-      }).join('')}
+            <div class="lib-cell" style="white-space:normal">
+              <div style="font-weight:600;color:var(--text)">${titleMark}</div>
+              <div style="font-size:12px;color:var(--text-faint);margin-top:3px">${contentSub}</div>
+            </div>
+            <div class="lib-cell">${statusTag}</div>
+            <div class="lib-cell">${usedTag}</div>
+            <div class="lib-cell">${timeAgo(p.updatedAt)}</div>
+            <div class="lib-actions">
+              <button class="btn btn-primary btn-sm" data-open2="${p.id}">${icon('edit')} 打开编辑</button>
+              <button class="btn btn-${used ? 'soft' : 'ghost'} btn-sm" data-toggle-used="${p.id}" title="${used ? '取消已使用标记' : '标记为已使用'}">${used ? '✓ 已使用' : '○ 标记已用'}</button>
+              <button class="btn btn-danger-soft btn-sm" data-del="${p.id}" title="删除该项目">${icon('trash')} 删除</button>
+            </div>
+          </div>`;
+        }).join('')}
+      </div>
     </div>`;
 
   grid.querySelectorAll('[data-open], [data-open2]').forEach((el) => {

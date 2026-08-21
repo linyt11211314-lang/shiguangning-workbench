@@ -789,6 +789,51 @@ html, body {
   .lib-grid-table > .lib-table-row > .lib-cell:nth-child(7),
   .lib-grid-table > .lib-table-row > .lib-cell:nth-child(8) { display: none; }
 }
+/* ---------- 页面：AI Listing 工坊 · 列表视图（与选品库一致） ---------- */
+.ls-grid-table {
+  display: grid;
+  grid-template-columns: 54px minmax(220px, 1fr) minmax(170px, 1.2fr) 110px 110px 130px minmax(280px, auto);
+  gap: 14px;
+  padding: 0 20px;
+}
+.ls-table-head,
+.ls-table-row {
+  display: grid;
+  grid-template-columns: subgrid;
+  grid-column: 1 / -1;
+  align-items: center;
+}
+.ls-table-head {
+  height: 46px;
+  background: var(--card-soft);
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-sub);
+  letter-spacing: .2px;
+}
+.ls-table-row {
+  min-height: 66px;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  transition: background .12s ease;
+  user-select: none;
+}
+.ls-table-row:last-child { border-bottom: none; }
+.ls-table-row:hover { background: var(--hover-bg); transform: translateY(-2px); box-shadow: 0 4px 14px rgba(20,30,50,.12); position: relative; z-index: 2; transition: background .12s ease, transform .12s ease, box-shadow .12s ease; }
+.ls-grid-table .lib-actions {
+  display: flex;
+  gap: 4px;
+  justify-content: flex-end;
+  flex-wrap: nowrap;
+  margin-top: 0;
+}
+.ls-grid-table .lib-actions .btn-sm { padding: 5px 8px; font-size: 12px; }
+@media (max-width: 1080px) {
+  .ls-grid-table { grid-template-columns: 46px minmax(160px, 1fr) minmax(150px, 1fr) 100px 100px minmax(280px, auto); }
+  .ls-grid-table > .ls-table-head > span:nth-child(3),
+  .ls-grid-table > .ls-table-row > .lib-cell:nth-child(3) { display: none; }
+}
 /* ---------- 页面：AI Listing 工坊 ---------- */
 .listing-steps { display: flex; align-items: center; gap: 8px; margin-bottom: 18px; }
 .step-item { display: flex; align-items: center; gap: 8px; }

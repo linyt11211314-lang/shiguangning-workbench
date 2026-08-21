@@ -19,6 +19,7 @@ let state = {
   view: 'list',          // list | form | result
   project: null,         // 当前项目对象
   formData: null,        // 表单数据（未保存时的草稿）
+  usedFilter: (typeof localStorage !== 'undefined' && localStorage.getItem('listing.usedFilter')) || 'all', // all | used | unused
 };
 
 const EMPTY_FORM = () => ({
@@ -101,19 +102,32 @@ export function render(container, route, { navigate, rerender }) {
  * 视图一：项目列表
  * ============================================================ */
 function renderList(container, { navigate, rerender }) {
-  const projects = listProjects();
-  const generatedCount = projects.filter((p) => p.status !== 'draft').length;
-  const todayCount = projects.filter((p) => {
+  const allProjects = listProjects();
+  const projects = allProjects.filter((p) => {
+    if (state.usedFilter === 'used') return Boolean(p.used);
+    if (state.usedFilter === 'unused') return !p.used;
+    return true;
+  });
+  const usedCount = allProjects.filter((p) => Boolean(p.used)).length;
+  const unusedCount = allProjects.length - usedCount;
+  const generatedCount = allProjects.filter((p) => p.status !== 'draft').length;
+  const todayCount = allProjects.filter((p) => {
     const d = new Date(p.createdAt);
     const now = new Date();
     return d.toDateString() === now.toDateString();
   }).length;
 
   const metrics = [
-    { label: 'Listing 项目', value: projects.length, sub: '全部项目' },
+    { label: 'Listing 项目', value: allProjects.length, sub: '全部项目' },
     { label: '已生成', value: generatedCount, sub: 'AI 已完成生成' },
     { label: '今日创建', value: todayCount, sub: '今天新建的项目' },
     { label: 'AI 服务', value: hasApiKey() ? '就绪' : '未配置', sub: hasApiKey() ? `Key ${maskedKey(getSettings().apiKey)}` : '前往设置配置 Key' },
+  ];
+
+  const filterOptions = [
+    { key: 'all', label: '全部', count: allProjects.length },
+    { key: 'used', label: '已使用', count: usedCount },
+    { key: 'unused', label: '未使用', count: unusedCount },
   ];
 
   container.innerHTML = `
@@ -133,6 +147,13 @@ function renderList(container, { navigate, rerender }) {
         <div style="font-size:14.5px;font-weight:700">Listing 项目</div>
         <div style="font-size:12.5px;color:var(--text-sub);margin-top:2px">刷新后仍在 · 随时打开继续编辑</div>
       </div>
+      <div class="listing-filter" role="tablist" aria-label="按使用状态筛选">
+        ${filterOptions.map((o) => `
+          <button type="button" class="listing-filter-btn ${state.usedFilter === o.key ? 'active' : ''}" data-filter="${o.key}" role="tab" aria-selected="${state.usedFilter === o.key}">
+            <span>${esc(o.label)}</span>
+            <span class="listing-filter-count">${o.count}</span>
+          </button>`).join('')}
+      </div>
       <button class="btn btn-ghost" data-tester title="POST /api/listing/generate 接口测试">${icon('link')} 接口测试台</button>
       <button class="btn btn-primary" data-new>${icon('plus')} 创建 Listing</button>
     </div>
@@ -143,9 +164,18 @@ function renderList(container, { navigate, rerender }) {
   container.querySelector('[data-tester]').addEventListener('click', () => {
     window.open('/api-tester.html', '_blank', 'noopener');
   });
+  container.querySelectorAll('.listing-filter-btn').forEach((el) => {
+    el.addEventListener('click', () => {
+      const next = el.dataset.filter;
+      if (state.usedFilter === next) return;
+      state.usedFilter = next;
+      try { localStorage.setItem('listing.usedFilter', next); } catch (_) { /* 隐私模式无 storage */ }
+      rerender();
+    });
+  });
 
   const grid = container.querySelector('[data-grid]');
-  if (!projects.length) {
+  if (!allProjects.length) {
     grid.innerHTML = `
       <div class="card"><div class="empty-state">
         <div class="empty-icon">${icon('sparkles')}</div>
@@ -158,6 +188,25 @@ function renderList(container, { navigate, rerender }) {
       </div></div>`;
     grid.querySelector('[data-new2]').addEventListener('click', () => navigate('listing:new'));
     grid.querySelector('[data-import2]').addEventListener('click', () => openLibraryPicker((prodId) => navigate(`listing:new:${prodId}`)));
+    return;
+  }
+  if (!projects.length) {
+    const labels = { used: '已使用', unused: '未使用' };
+    grid.innerHTML = `
+      <div class="card"><div class="empty-state">
+        <div class="empty-icon">${icon('box')}</div>
+        <div class="empty-title">没有「${esc(labels[state.usedFilter] || '')}」的 Listing 项目</div>
+        <div class="empty-sub">点击「全部」查看所有项目，或切换其它筛选条件</div>
+        <div class="mt-16">
+          <button class="btn btn-soft" data-reset-filter>查看全部</button>
+        </div>
+      </div></div>`;
+    const reset = grid.querySelector('[data-reset-filter]');
+    if (reset) reset.addEventListener('click', () => {
+      state.usedFilter = 'all';
+      try { localStorage.setItem('listing.usedFilter', 'all'); } catch (_) {}
+      rerender();
+    });
     return;
   }
 

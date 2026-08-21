@@ -2011,3 +2011,53 @@ html, body {
 
 :root[data-mode="dark"] .sa-card-active { box-shadow: 0 2px 10px rgba(0,0,0,0.4); }
 :root[data-mode="dark"] .sa-badge-yellow { background: #3A2E14; color: #FFC24B; }
+
+/* Listing 项目列表 - 使用状态筛选条 */
+.listing-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 999px;
+  background: var(--card-soft);
+  border: 1px solid var(--border-soft);
+}
+.listing-filter-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: none;
+  background: transparent;
+  color: var(--text-sub);
+  font-size: 13px;
+  font-weight: 600;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background .12s ease, color .12s ease;
+  font-family: inherit;
+}
+.listing-filter-btn:hover { color: var(--text); }
+.listing-filter-btn.active {
+  background: var(--card);
+  color: var(--text);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+}
+.listing-filter-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--border-soft);
+  color: var(--text-sub);
+  font-size: 11.5px;
+  font-weight: 700;
+  line-height: 1;
+}
+.listing-filter-btn.active .listing-filter-count {
+  background: var(--text);
+  color: var(--card);
+}

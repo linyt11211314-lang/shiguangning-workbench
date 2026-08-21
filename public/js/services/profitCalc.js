@@ -196,11 +196,14 @@ export async function parsePurchaseFile(file) {
   return { fileName: file.name, sheetName, map };
 }
 
-/* ===================== 计算引擎 ===================== */
-export function computeProfit(rawRows, purchaseMap, costOverrides, params) {
+/* ===================== 计算引擎 =====================
+ * @param headOverrides 逐 SKU 头程比例覆盖（比例值，如 0.06 表示 6%），未设置则回退全局 headRate
+ */
+export function computeProfit(rawRows, purchaseMap, costOverrides, headOverrides, params) {
   const purchase = purchaseMap || {};
-  const overrides = costOverrides || {};
-  const headRate = params.headRate;
+  const ovPu = costOverrides || {};
+  const ovHead = headOverrides || {};
+  const globalHead = params.headRate;
   const rateAED = params.rateAED;
   const rateSAR = params.rateSAR;
 
@@ -214,18 +217,23 @@ export function computeProfit(rawRows, purchaseMap, costOverrides, params) {
     const gross = r.gross;
     const c89 = r.c89;
 
-    // 采购单价（CNY）：手动覆盖 > 采购单 > 0
-    let puCny = overrides[r.ms] != null ? Number(overrides[r.ms]) : (purchase[r.ms] != null ? Number(purchase[r.ms]) : 0);
-    if (!isFinite(puCny) || puCny < 0) puCny = 0;
+    // 采购单价（CNY）：逐 SKU 覆盖 > 采购单 > 0
+    const matchedPuCny = purchase[r.ms] != null ? Number(purchase[r.ms]) : 0;
+    const puCny = ovPu[r.ms] != null ? Number(ovPu[r.ms]) : matchedPuCny;
     const puLocal = puCny * rate;
+    // 头程比例：逐 SKU 覆盖 > 全局
+    const headRate = ovHead[r.ms] != null ? Number(ovHead[r.ms]) : globalHead;
     const head = sale * headRate;
     const realProfitLocal = gross - c89 - qty * puLocal - head;
     const realMargin = sale > 0 ? realProfitLocal / sale : 0;
 
     const cny = (v) => v / rate;
     return {
-      ms: r.ms, name: r.name || r.ms, shop: r.shop, cur, site,
-      qty, sale, ad, gross, c89, puCny, head,
+      ms: r.ms, name: r.name || r.ms, shop: r.shop, cur, site, rate,
+      qty, sale, ad, gross, c89,
+      puCny, matchedPuCny, headRate, head,
+      hasPuOverride: ovPu[r.ms] != null,
+      hasHeadOverride: ovHead[r.ms] != null,
       realProfit: realProfitLocal,
       realMargin,
       saleCny: cny(sale), grossCny: cny(gross), realCny: cny(realProfitLocal), adCny: cny(ad),

@@ -2166,7 +2166,7 @@ html, body {
 /* ===================== 利润看板 ===================== */
 .pf-wrap { max-width: 100%; }
 .pf-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 6px; }
-.pf-kpi { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 14px 16px; display: flex; flex-direction: column; gap: 4px; }
+.pf-kpi { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 14px 16px; display: flex; flex-direction: column; gap: 4px; box-shadow: 0 2px 10px rgba(20, 20, 40, 0.06); }
 .pf-kpi-num { font-size: 23px; font-weight: 800; line-height: 1.1; color: var(--text); }
 .pf-kpi-label { font-size: 12px; color: var(--text-sub); }
 .pf-pos { color: #1f9d55; }
@@ -2183,13 +2183,22 @@ html, body {
 .pf-table .pf-rank { color: var(--text-faint); text-align: center; }
 .pf-table .pf-ms { font-weight: 600; color: var(--text); }
 .pf-table .pf-cause { color: var(--text-sub); font-size: 12px; white-space: normal; }
+.pf-table .pf-name { max-width: 200px; }
+.pf-table .pf-name-inner { display: block; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pf-table .pf-muted { color: var(--text-faint); }
 .pf-detail tbody tr:nth-child(even) { background: color-mix(in srgb, var(--card-soft) 55%, transparent); }
+.pf-detail tbody tr.pf-row-pos { background: rgba(31, 157, 85, 0.12); }
+.pf-detail tbody tr.pf-row-neg { background: rgba(216, 69, 59, 0.12); }
+.pf-detail tbody tr.pf-row-pos:hover { background: rgba(31, 157, 85, 0.20); }
+.pf-detail tbody tr.pf-row-neg:hover { background: rgba(216, 69, 59, 0.20); }
+
+.pf-detail-toolbar { display: flex; align-items: center; gap: 14px; margin-bottom: 10px; flex-wrap: wrap; }
 
 .pf-cost-cell { padding: 2px 6px !important; }
-.pf-cost-input {
-  width: 86px; font-size: 13px; padding: 5px 7px; text-align: right;
+.pf-cost-input, .pf-head-input {
+  width: 92px; font-size: 13px; padding: 5px 7px; text-align: right;
   border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
   background: var(--card); color: var(--text); font-variant-numeric: tabular-nums;
 }
-.pf-cost-input:focus { outline: none; border-color: var(--brand, #ff5277); box-shadow: 0 0 0 3px rgba(255, 82, 119, 0.16); }
-.pf-cost-input:hover { border-color: var(--border-strong); background: var(--card-soft); }
+.pf-cost-input:focus, .pf-head-input:focus { outline: none; border-color: var(--brand, #ff5277); box-shadow: 0 0 0 3px rgba(255, 82, 119, 0.16); }
+.pf-cost-input:hover, .pf-head-input:hover { border-color: var(--border-strong); background: var(--card-soft); }

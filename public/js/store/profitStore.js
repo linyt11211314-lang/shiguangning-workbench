@@ -10,6 +10,7 @@ const PARAMS_KEY = 'sgn.profit.params';
 const REPORT_KEY = 'sgn.profit.report';
 const PURCHASE_KEY = 'sgn.profit.purchase';
 const OVERRIDE_KEY = 'sgn.profit.costOverride';
+const HEAD_OVERRIDE_KEY = 'sgn.profit.headOverride';
 
 /** 默认参数：汇率采用此前人工核算口径（1 CNY = X 本地币） */
 export const DEFAULT_PARAMS = {
@@ -99,5 +100,25 @@ export function setCostOverride(msku, value) {
   if (!isFinite(n) || n <= 0) delete map[msku];
   else map[msku] = n;
   saveCostOverrides(map);
+  return map;
+}
+
+/* ===================== 逐 SKU 头程比例手动覆盖 ===================== */
+export function getHeadOverrides() {
+  try { return JSON.parse(localStorage.getItem(HEAD_OVERRIDE_KEY) || '{}'); } catch (_) { return {}; }
+}
+
+export function saveHeadOverrides(map) {
+  try { localStorage.setItem(HEAD_OVERRIDE_KEY, JSON.stringify(map)); } catch (_) {}
+  return map;
+}
+
+/** 设置/清除单个 SKU 的头程比例覆盖（value 为空或 <=0 视为清除，回退到全局头程率） */
+export function setHeadOverride(msku, value) {
+  const map = getHeadOverrides();
+  const ratio = Number(value);
+  if (!isFinite(ratio) || ratio <= 0) delete map[msku];
+  else map[msku] = ratio; // 存储为比例（如 0.06 表示 6%）
+  saveHeadOverrides(map);
   return map;
 }

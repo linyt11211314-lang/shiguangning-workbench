@@ -2162,3 +2162,34 @@ html, body {
   .listing-toolbar { gap: 12px; }
   .listing-filter-group { flex: 1 1 100%; }
 }
+
+/* ===================== 利润看板 ===================== */
+.pf-wrap { max-width: 100%; }
+.pf-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 6px; }
+.pf-kpi { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 14px 16px; display: flex; flex-direction: column; gap: 4px; }
+.pf-kpi-num { font-size: 23px; font-weight: 800; line-height: 1.1; color: var(--text); }
+.pf-kpi-label { font-size: 12px; color: var(--text-sub); }
+.pf-pos { color: #1f9d55; }
+.pf-neg { color: #d8453b; }
+:root[data-mode="dark"] .pf-pos { color: #4ade80; }
+:root[data-mode="dark"] .pf-neg { color: #f87171; }
+.pf-note { font-size: 12px; color: var(--text-sub); margin: 8px 2px 16px; line-height: 1.6; }
+
+.pf-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.pf-table th, .pf-table td { padding: 8px 10px; border-bottom: 1px solid var(--border); text-align: left; white-space: nowrap; }
+.pf-table thead th { position: sticky; top: 0; background: var(--card-soft); color: var(--text-sub); font-weight: 700; z-index: 1; }
+.pf-table tbody tr:hover { background: var(--card-soft); }
+.pf-table .pf-num { text-align: right; font-variant-numeric: tabular-nums; }
+.pf-table .pf-rank { color: var(--text-faint); text-align: center; }
+.pf-table .pf-ms { font-weight: 600; color: var(--text); }
+.pf-table .pf-cause { color: var(--text-sub); font-size: 12px; white-space: normal; }
+.pf-detail tbody tr:nth-child(even) { background: color-mix(in srgb, var(--card-soft) 55%, transparent); }
+
+.pf-cost-cell { padding: 2px 6px !important; }
+.pf-cost-input {
+  width: 86px; font-size: 13px; padding: 5px 7px; text-align: right;
+  border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
+  background: var(--card); color: var(--text); font-variant-numeric: tabular-nums;
+}
+.pf-cost-input:focus { outline: none; border-color: var(--brand, #ff5277); box-shadow: 0 0 0 3px rgba(255, 82, 119, 0.16); }
+.pf-cost-input:hover { border-color: var(--border-strong); background: var(--card-soft); }

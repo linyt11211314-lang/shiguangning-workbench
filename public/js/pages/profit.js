@@ -20,6 +20,45 @@ import { parseProfitFile, parsePurchaseFile, computeProfit } from '../services/p
 const LOSS_DISPLAY = 25; // 亏损预警默认展示条数
 let detailShowAll = false; // 全量明细是否展开零销量 SKU
 
+/* ===================== 排序（点击表头切换） ===================== */
+// 每张表独立的排序状态；模块级保留，rerender 不丢
+const sortStates = {}; // tableKey -> { key, dir }
+const DEFAULT_SORT = {
+  top:    { key: 'realCny',    dir: 'desc' },
+  loss:   { key: 'realCny',    dir: 'asc'  }, // 亏损预警：亏损最深排最前
+  ad:     { key: 'adCny',      dir: 'desc' },
+  detail: { key: 'realCny',    dir: 'desc' },
+};
+const STR_KEYS = ['ms', 'name', 'site'];
+
+function getSortVal(r, key) {
+  if (key === 'acos') return r.saleCny > 0 ? r.adCny / r.saleCny : 0;
+  if (STR_KEYS.includes(key)) return String(r[key] || '');
+  return Number(r[key]) || 0;
+}
+function applySort(rows, tableKey) {
+  const st = sortStates[tableKey] || DEFAULT_SORT[tableKey];
+  if (!st) return rows;
+  const isStr = STR_KEYS.includes(st.key);
+  return [...rows].sort((a, b) => {
+    const va = getSortVal(a, st.key);
+    const vb = getSortVal(b, st.key);
+    let cmp = isStr ? String(va).localeCompare(String(vb), 'zh-CN') : (Number(va) - Number(vb));
+    if (cmp === 0) cmp = String(a.ms || '').localeCompare(String(b.ms || ''), 'zh-CN');
+    return st.dir === 'asc' ? cmp : -cmp;
+  });
+}
+function sortableTh(tableKey, key, label) {
+  const st = sortStates[tableKey] || DEFAULT_SORT[tableKey];
+  const active = st && st.key === key;
+  const arrow = active ? (st.dir === 'asc' ? '↑' : '↓') : '↕';
+  const cls = active ? `pf-sortable pf-sort-active pf-sort-${st.dir}` : 'pf-sortable';
+  return `<th class="${cls}" data-table="${tableKey}" data-sort="${key}" title="点击切换排序">${label}<span class="pf-sort-arrow">${arrow}</span></th>`;
+}
+function nameSpan(r) {
+  return `<span class="pf-name-inner" title="${esc(r.name)}">${esc(r.name)}</span>`;
+}
+
 /* ===================== 格式化 ===================== */
 function fmtCNY(v, dec = 0) {
   const n = Number(v || 0);
@@ -122,11 +161,12 @@ function renderKPI(k) {
 /* ===================== 盈利 TOP10 ===================== */
 function renderTopProfit(rows) {
   if (!rows.length) return '';
-  const body = rows.map((r, i) => `
+  const sorted = applySort(rows, 'top');
+  const body = sorted.map((r, i) => `
     <tr>
       <td class="pf-rank">${i + 1}</td>
       <td class="pf-ms">${esc(r.ms)}</td>
-      <td class="pf-name"><span class="pf-name-inner" title="${esc(r.name)}">${esc(r.name)}</span></td>
+      <td class="pf-name">${nameSpan(r)}</td>
       <td>${r.site}</td>
       <td class="pf-num">${fmtInt(r.qty)}</td>
       <td class="pf-num">${fmtCNY(r.saleCny)}</td>
@@ -134,10 +174,20 @@ function renderTopProfit(rows) {
       <td class="pf-num pf-pos">${fmtCNY(r.realCny)}</td>
       <td class="pf-num pf-pos">${fmtPct(r.realMargin)}</td>
     </tr>`).join('');
-  return section('🏆 盈利 TOP10（按调整后真实利润 CNY）', `
+  return section('🏆 盈利 TOP10', `
     <div class="table-scroll">
-      <table class="pf-table">
-        <thead><tr><th>#</th><th>MSKU</th><th>品名</th><th>站点</th><th>销量</th><th>销售额(CNY)</th><th>毛利润(CNY)</th><th>调整后真实利润(CNY)</th><th>毛利率</th></tr></thead>
+      <table class="pf-table" data-table="top">
+        <thead><tr>
+          <th>#</th>
+          ${sortableTh('top', 'ms', 'MSKU')}
+          ${sortableTh('top', 'name', '品名')}
+          ${sortableTh('top', 'site', '站点')}
+          ${sortableTh('top', 'qty', '销量')}
+          ${sortableTh('top', 'saleCny', '销售额(CNY)')}
+          ${sortableTh('top', 'grossCny', '毛利润(CNY)')}
+          ${sortableTh('top', 'realCny', '调整后真实利润(CNY)')}
+          ${sortableTh('top', 'realMargin', '毛利率')}
+        </tr></thead>
         <tbody>${body}</tbody>
       </table>
     </div>`);
@@ -147,7 +197,8 @@ function renderTopProfit(rows) {
 function renderLoss(rows) {
   const withSale = rows.filter((r) => r.qty > 0);
   if (!withSale.length) return section('✅ 亏损预警（有销量）', `<div class="pf-note pf-pos">当前有销量的 SKU 全部盈利（零销量纯费用亏损已过滤）。</div>`);
-  const disp = withSale.slice(0, LOSS_DISPLAY);
+  const sorted = applySort(withSale, 'loss');
+  const disp = sorted.slice(0, LOSS_DISPLAY);
   const body = disp.map((r) => {
     const cause = [];
     if (r.hasPuOverride || (r.matchedPuCny > 0 && r.qty * r.matchedPuCny * (r.cur === 'SAR' ? 1 / getParams().rateSAR : 1 / getParams().rateAED) > r.gross)) cause.push('采购成本>毛利润');
@@ -156,7 +207,7 @@ function renderLoss(rows) {
     return `
     <tr class="pf-row-neg">
       <td class="pf-ms">${esc(r.ms)}</td>
-      <td class="pf-name"><span class="pf-name-inner" title="${esc(r.name)}">${esc(r.name)}</span></td>
+      <td class="pf-name">${nameSpan(r)}</td>
       <td>${r.site}</td>
       <td class="pf-num">${fmtInt(r.qty)}</td>
       <td class="pf-num">${fmtCNY(r.saleCny)}</td>
@@ -166,33 +217,61 @@ function renderLoss(rows) {
       <td class="pf-cause">${cause.join('; ') || '低销量'}</td>
     </tr>`;
   }).join('');
-  return section(`⚠️ 亏损预警（有销量 ${withSale.length} 个，展示前 ${disp.length}）`,
+  const st = sortStates.loss || DEFAULT_SORT.loss;
+  const sortHint = `（点击表头切换排序：当前 <b>${sortKeyLabel(st.key)}</b> ${st.dir === 'asc' ? '升' : '降'}序）`;
+  return section(`⚠️ 亏损预警（有销量 ${withSale.length} 个，展示前 ${disp.length}）${sortHint}`,
     `<div class="table-scroll">
-      <table class="pf-table">
-        <thead><tr><th>MSKU</th><th>品名</th><th>站点</th><th>销量</th><th>销售额(CNY)</th><th>毛利润(CNY)</th><th>调整后真实利润(CNY)</th><th>毛利率</th><th>主因</th></tr></thead>
+      <table class="pf-table" data-table="loss">
+        <thead><tr>
+          ${sortableTh('loss', 'ms', 'MSKU')}
+          ${sortableTh('loss', 'name', '品名')}
+          ${sortableTh('loss', 'site', '站点')}
+          ${sortableTh('loss', 'qty', '销量')}
+          ${sortableTh('loss', 'saleCny', '销售额(CNY)')}
+          ${sortableTh('loss', 'grossCny', '毛利润(CNY)')}
+          ${sortableTh('loss', 'realCny', '调整后真实利润(CNY)')}
+          ${sortableTh('loss', 'realMargin', '毛利率')}
+          <th>主因</th>
+        </tr></thead>
         <tbody>${body}</tbody>
       </table>
     </div>
     ${withSale.length > LOSS_DISPLAY ? `<div class="pf-note">其余 ${withSale.length - LOSS_DISPLAY} 个有销量亏损 SKU 见下方全量明细。</div>` : ''}`);
 }
+function sortKeyLabel(k) {
+  return ({
+    ms: 'MSKU', name: '品名', site: '站点', qty: '销量',
+    saleCny: '销售额', grossCny: '毛利润', realCny: '调整后真实利润', realMargin: '毛利率',
+    adCny: '广告费', acos: 'ACOS', matchedPuCny: '匹配采购价', head: '头程',
+  })[k] || k;
+}
 
 /* ===================== 广告效率 ===================== */
 function renderAd(rows) {
   if (!rows.length) return '';
-  const body = rows.map((r) => `
+  const sorted = applySort(rows, 'ad');
+  const body = sorted.map((r) => `
     <tr>
       <td class="pf-ms">${esc(r.ms)}</td>
-      <td class="pf-name"><span class="pf-name-inner" title="${esc(r.name)}">${esc(r.name)}</span></td>
+      <td class="pf-name">${nameSpan(r)}</td>
       <td>${r.site}</td>
       <td class="pf-num">${fmtCNY(r.saleCny)}</td>
       <td class="pf-num">${fmtCNY(r.adCny)}</td>
       <td class="pf-num">${fmtPct(r.saleCny > 0 ? r.adCny / r.saleCny : 0)}</td>
       <td class="pf-num ${r.realCny < 0 ? 'pf-neg' : 'pf-pos'}">${fmtCNY(r.realCny)}</td>
     </tr>`).join('');
-  return section('📣 广告效率 TOP10（按广告费 CNY）', `
+  return section('📣 广告效率 TOP10', `
     <div class="table-scroll">
-      <table class="pf-table">
-        <thead><tr><th>MSKU</th><th>品名</th><th>站点</th><th>销售额(CNY)</th><th>广告费(CNY)</th><th>ACOS</th><th>调整后真实利润(CNY)</th></tr></thead>
+      <table class="pf-table" data-table="ad">
+        <thead><tr>
+          ${sortableTh('ad', 'ms', 'MSKU')}
+          ${sortableTh('ad', 'name', '品名')}
+          ${sortableTh('ad', 'site', '站点')}
+          ${sortableTh('ad', 'saleCny', '销售额(CNY)')}
+          ${sortableTh('ad', 'adCny', '广告费(CNY)')}
+          ${sortableTh('ad', 'acos', 'ACOS')}
+          ${sortableTh('ad', 'realCny', '调整后真实利润(CNY)')}
+        </tr></thead>
         <tbody>${body}</tbody>
       </table>
     </div>`);
@@ -225,7 +304,7 @@ function renderDetail(rows, overrides, headOverrides, purchaseMap) {
   const params = getParams();
   const all = [...rows].sort((a, b) => b.realCny - a.realCny);
   const withSale = all.filter((r) => r.qty > 0);
-  const view = detailShowAll ? all : withSale;
+  const view = applySort(detailShowAll ? all : withSale, 'detail');
   const zeroN = all.length - withSale.length;
 
   const body = view.map((r) => {
@@ -235,7 +314,7 @@ function renderDetail(rows, overrides, headOverrides, purchaseMap) {
     return `
     <tr class="${rowCls}">
       <td class="pf-ms">${esc(r.ms)}</td>
-      <td class="pf-name"><span class="pf-name-inner" title="${esc(r.name)}">${esc(r.name)}</span></td>
+      <td class="pf-name">${nameSpan(r)}</td>
       <td>${r.site}</td>
       <td class="pf-num">${fmtInt(r.qty)}</td>
       <td class="pf-num">${fmtCNY(r.saleCny)}</td>
@@ -261,8 +340,22 @@ function renderDetail(rows, overrides, headOverrides, purchaseMap) {
   return section(`📋 全量明细（数据底表 · 默认按调整后真实利润降序、仅显示有销量 ${withSale.length} 个${detailShowAll ? '，已展开全部 ' + all.length + ' 个' : ''}）`, `
     <div class="pf-detail-toolbar">${toggleBtn}<span class="pf-note" style="margin:0">「调整后采购单价 / 头程比例」留空则用采购单匹配值 / 全局 ${fmtPct(params.headRate)}；填了即时重算。</span></div>
     <div class="table-scroll">
-      <table class="pf-table pf-detail">
-        <thead><tr><th>MSKU</th><th>品名</th><th>站点</th><th>销量</th><th>销售额(CNY)</th><th>毛利润(CNY)</th><th>匹配采购价(CNY)</th><th>调整后采购单价(CNY)</th><th>调整后头程比例(%)</th><th>头程(CNY)</th><th>广告费(CNY)</th><th>调整后真实利润(CNY)</th><th>真实毛利率</th></tr></thead>
+      <table class="pf-table pf-detail" data-table="detail">
+        <thead><tr>
+          ${sortableTh('detail', 'ms', 'MSKU')}
+          ${sortableTh('detail', 'name', '品名')}
+          ${sortableTh('detail', 'site', '站点')}
+          ${sortableTh('detail', 'qty', '销量')}
+          ${sortableTh('detail', 'saleCny', '销售额(CNY)')}
+          ${sortableTh('detail', 'grossCny', '毛利润(CNY)')}
+          ${sortableTh('detail', 'matchedPuCny', '匹配采购价(CNY)')}
+          <th>调整后采购单价(CNY)</th>
+          <th>调整后头程比例(%)</th>
+          ${sortableTh('detail', 'head', '头程(CNY)')}
+          ${sortableTh('detail', 'adCny', '广告费(CNY)')}
+          ${sortableTh('detail', 'realCny', '调整后真实利润(CNY)')}
+          ${sortableTh('detail', 'realMargin', '真实毛利率')}
+        </tr></thead>
         <tbody>${body}</tbody>
       </table>
     </div>`);
@@ -321,6 +414,18 @@ function bindEvents(container, ctx) {
   container.querySelector('#pfToggleDetail')?.addEventListener('click', () => {
     detailShowAll = !detailShowAll;
     ctx.rerender();
+  });
+
+  // 点击表头切换排序（每张表独立状态，模块级 sortStates 保留）
+  container.querySelectorAll('.pf-sortable').forEach((th) => {
+    th.addEventListener('click', () => {
+      const tableKey = th.dataset.table;
+      const key = th.dataset.sort;
+      const cur = sortStates[tableKey] || DEFAULT_SORT[tableKey];
+      const dir = cur.key === key ? (cur.dir === 'asc' ? 'desc' : 'asc') : (STR_KEYS.includes(key) ? 'asc' : 'desc');
+      sortStates[tableKey] = { key, dir };
+      ctx.rerender();
+    });
   });
 
   // 调整后采购单价（CNY）：留空/≤0 视为清除，回退采购单取值

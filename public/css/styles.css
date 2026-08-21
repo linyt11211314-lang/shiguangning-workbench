@@ -2179,6 +2179,11 @@ html, body {
 .pf-table th, .pf-table td { padding: 8px 10px; border-bottom: 1px solid var(--border); text-align: left; white-space: nowrap; }
 .pf-table thead th { position: sticky; top: 0; background: var(--card-soft); color: var(--text-sub); font-weight: 700; z-index: 1; }
 .pf-table tbody tr:hover { background: var(--card-soft); }
+.pf-sortable { cursor: pointer; user-select: none; transition: background 0.12s, color 0.12s; }
+.pf-sortable:hover { background: color-mix(in srgb, var(--card) 70%, transparent); color: var(--text); }
+.pf-sort-arrow { display: inline-block; margin-left: 4px; opacity: 0.35; font-size: 11px; transition: opacity 0.12s, color 0.12s; }
+.pf-sortable.pf-sort-active { background: color-mix(in srgb, var(--brand, #ff5277) 10%, transparent); color: var(--text); }
+.pf-sortable.pf-sort-active .pf-sort-arrow { opacity: 1; color: var(--brand, #ff5277); font-weight: 800; }
 .pf-table .pf-num { text-align: left; font-variant-numeric: tabular-nums; }
 .pf-table .pf-rank { color: var(--text-faint); text-align: left; }
 .pf-table .pf-ms { font-weight: 600; color: var(--text); }

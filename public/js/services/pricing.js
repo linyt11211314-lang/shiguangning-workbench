@@ -84,31 +84,50 @@ export function calculateQuote(input = {}) {
       storage,
       return: returnCost,
       targetProfitRate,
+      // 保留费率以便 apply99 基于 .99 展示价真实重算利润/利润率
+      rateReferral: referralRate,
+      rateAd: adRate,
+      rateAvt: avtRate,
+      rateStorage: storageRate,
+      rateReturn: returnRate,
     },
   };
 }
 
 /**
  * 将报价转换为 .99 结尾的展示价。
- * 说明：floor(p)+0.99 本身已必然令实际利润率 >= 目标档位（因 .99 向上收尾抬高了 margin），
- * 故不再做 "+1.99 逐档上调" 的循环，避免 margin 被进一步推高（>目标）误导用户。
- * 显示的「实际利润率」即目标档位本身（保守 1% / 均衡 15% / 激进 30%），
- * 利润仍按 .99 展示价真实计算。
- * @param {{price:number, targetProfitRate:number, breakdown:object}} quote calculateQuote 的返回
+ * 设计：
+ *   - 展示价 d = floor(理论价 p) + 0.99（向上收尾到最近的 .99）
+ *   - 由于利润率 = 1 - 五项费率 - 固定成本/d，d 越大利润率越高
+ *     → floor+0.99 后利润率只会微升、不会跌破目标档位（无需 while 循环）
+ *   - displayMargin = 基于 d 真实重算的利润率（如实告知，不再伪装成 target）
+ *   - displayProfit = 基于 d 真实重算的利润（用 breakdown 存的实际费率重新计算各项费用）
+ * @param {{price:number, breakdown:object}} quote calculateQuote 的返回
  * @returns {{displayPrice:number, displayProfit:number, displayMargin:number}|null}
  */
 export function apply99(quote) {
   if (!quote || quote.error || !isFinite(quote.price)) return null;
-  const p = quote.price;
-  const targetMargin = Number(quote.targetProfitRate) || 0; // 目标利润率（0-1）
   const b = quote.breakdown || {};
-  const total = (Number(b.costUsd) || 0) + (Number(b.fbaFee) || 0) + (Number(b.shippingPerUnit) || 0);
-  const fiveDed = (Number(b.referral) || 0) + (Number(b.ad) || 0) + (Number(b.avt) || 0) + (Number(b.storage) || 0) + (Number(b.return) || 0);
-  // 展示价：以 .99 结尾（floor(p)+0.99 即可保证 margin >= target）
-  const d = Math.round((Math.floor(p) + 0.99) * 100) / 100;
-  const profit = Math.round((d - fiveDed - total) * 100) / 100;
-  // 显示利润率 = 目标档位（不再展示 .99 收尾带来的 +1/+2 实际超出）
-  return { displayPrice: d, displayProfit: profit, displayMargin: targetMargin };
+  const costUsd = Number(b.costUsd) || 0;
+  const fbaFee = Number(b.fbaFee) || 0;
+  const shippingPerUnit = Number(b.shippingPerUnit) || 0;
+  const rateReferral = Number(b.rateReferral) || 0;
+  const rateAd = Number(b.rateAd) || 0;
+  const rateAvt = Number(b.rateAvt) || 0;
+  const rateStorage = Number(b.rateStorage) || 0;
+  const rateReturn = Number(b.rateReturn) || 0;
+
+  // .99 结尾展示价：floor(p)+0.99
+  const d = round2(Math.floor(quote.price) + 0.99);
+  // 基于 d 用真实费率重算各项费用与利润
+  const referral = round2(d * rateReferral);
+  const ad = round2(d * rateAd);
+  const avt = round2(d * rateAvt);
+  const storage = round2(d * rateStorage);
+  const ret = round2(d * rateReturn);
+  const profit = round2(d - referral - ad - avt - storage - ret - fbaFee - shippingPerUnit - costUsd);
+  const margin = d > 0 ? profit / d : 0;
+  return { displayPrice: d, displayProfit: profit, displayMargin: margin };
 }
 
 /** 默认测算参数（百分比字段与 UI 一致，用整数，如 30 表示 30%） */

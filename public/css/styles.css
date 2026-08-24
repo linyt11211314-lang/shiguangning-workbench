@@ -2349,3 +2349,25 @@ html, body {
   font-variant-numeric: tabular-nums;
 }
 .ship-delta b { color: var(--text); font-weight: 700; }
+.ship-delta br { line-height: 1.9; }
+
+/* 计算模式切换 */
+.ship-mode { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.ship-mode-label { font-size: 12.5px; font-weight: 600; color: var(--text-sub); white-space: nowrap; }
+.ship-mode-toggle {
+  display: inline-flex; padding: 3px; gap: 3px;
+  background: var(--card-soft, #f4f5f7); border: 1px solid var(--border);
+  border-radius: 999px;
+}
+.ship-mode-btn {
+  border: none; background: transparent; cursor: pointer;
+  font-size: 12px; font-weight: 600; color: var(--text-faint);
+  padding: 5px 12px; border-radius: 999px;
+  transition: background 0.14s ease, color 0.14s ease;
+}
+.ship-mode-btn:hover { color: var(--text); }
+.ship-mode-btn.active {
+  background: var(--brand, #ff5277); color: #fff;
+  box-shadow: 0 2px 8px rgba(255,82,119,0.28);
+}
+.ship-section.is-hidden { display: none; }

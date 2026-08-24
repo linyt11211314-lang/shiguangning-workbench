@@ -29,6 +29,9 @@ const shipState = {
   dimFactor: 5000,
   seaMin: 21, seaRate: 12,
   airMin: 21, airRate: 38,
+  purchaseCost: 0,
+  mode: 'auto',
+  qty: 100,
 };
 
 /* ===================== 排序（点击表头切换） ===================== */

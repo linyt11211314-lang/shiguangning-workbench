@@ -12,6 +12,7 @@ const PURCHASE_KEY = 'sgn.profit.purchase';
 const OVERRIDE_KEY = 'sgn.profit.costOverride';
 const HEAD_OVERRIDE_KEY = 'sgn.profit.headOverride';
 const SITE_FILTER_KEY = 'sgn.profit.siteFilter';
+const SHIP_KEY = 'sgn.profit.shipping';
 
 /** 默认参数：汇率采用此前人工核算口径（1 CNY = X 本地币） */
 export const DEFAULT_PARAMS = {
@@ -140,4 +141,45 @@ export function setSiteFilter(value) {
   const safe = SITE_FILTERS.includes(v) ? v : 'all';
   try { localStorage.setItem(SITE_FILTER_KEY, safe); } catch (_) {}
   return safe;
+}
+
+/* ===================== 海运空运对比输入状态（刷新保留上次数据） ===================== */
+/** 海运空运对比的默认值，与 shippingCompare.js 的 DEFAULTS 保持一致 */
+export const DEFAULT_SHIP = {
+  length: 40, width: 30, height: 20, weight: 2,
+  dimFactor: 5000,
+  seaMin: 21, seaRate: 12,
+  airMin: 21, airRate: 38,
+  purchaseCost: 0,
+  mode: 'auto',
+  qty: 100,
+};
+const SHIP_KEYS = Object.keys(DEFAULT_SHIP);
+
+function asNumber(v, fallback) {
+  const n = Number(v);
+  return isFinite(n) ? n : fallback;
+}
+
+/** 读取上次保存的对比参数（与默认值合并，缺字段/非法值回退默认） */
+export function getShipState() {
+  let saved = {};
+  try { saved = JSON.parse(localStorage.getItem(SHIP_KEY) || '{}') || {}; } catch (_) { saved = {}; }
+  const out = { ...DEFAULT_SHIP };
+  for (const k of SHIP_KEYS) {
+    if (k === 'mode') continue; // mode 为字符串字段，单独处理
+    if (k in saved) out[k] = asNumber(saved[k], DEFAULT_SHIP[k]);
+  }
+  if ('mode' in saved && (saved.mode === 'auto' || saved.mode === 'custom')) out.mode = saved.mode;
+  if (out.mode !== 'auto' && out.mode !== 'custom') out.mode = 'auto';
+  if (!isFinite(out.qty) || out.qty < 1) out.qty = DEFAULT_SHIP.qty;
+  if (!isFinite(out.dimFactor) || out.dimFactor <= 0) out.dimFactor = DEFAULT_SHIP.dimFactor;
+  return out;
+}
+
+/** 增量保存对比参数（与现有值合并后写入 localStorage） */
+export function saveShipState(partial) {
+  const next = { ...getShipState(), ...partial };
+  try { localStorage.setItem(SHIP_KEY, JSON.stringify(next)); } catch (_) {}
+  return next;
 }

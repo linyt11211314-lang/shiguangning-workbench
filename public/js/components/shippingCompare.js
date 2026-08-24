@@ -254,8 +254,9 @@ export function renderShippingCompare(d = {}) {
  * 绑定对比工具输入事件（就地重算，不整页刷新，保留输入焦点）。
  * @param {HTMLElement} root 包含对比工具 DOM 的容器
  * @param {object} state 外部输入状态对象（按引用同步，切回页面时保留）
+ * @param {(partial:object)=>void} [persist] 每次输入变更后回调，用于持久化（如保存到 localStorage）
  */
-export function bindShipping(root, state) {
+export function bindShipping(root, state, persist) {
   const ids = ['shipL', 'shipW', 'shipH', 'shipWg', 'shipDim', 'shipPurchase',
     'shipSeaMin', 'shipSeaRate', 'shipAirMin', 'shipAirRate', 'shipQty'];
 
@@ -273,8 +274,11 @@ export function bindShipping(root, state) {
     state.qty = Number(root.querySelector('#shipQty').value);
   };
 
+  const save = () => { if (typeof persist === 'function') persist({ ...state }); };
+
   ids.forEach((id) => root.querySelector('#' + id)?.addEventListener('input', () => {
     syncFromInputs();
+    save();
     recompute(root);
   }));
 
@@ -284,6 +288,7 @@ export function bindShipping(root, state) {
       state.mode = btn.dataset.mode;
       root.querySelectorAll('.ship-mode-btn').forEach((b) => b.classList.toggle('active', b.dataset.mode === state.mode));
       root.querySelector('#shipQtySection')?.classList.toggle('is-hidden', state.mode !== 'custom');
+      save();
       recompute(root);
     });
   });
@@ -303,6 +308,7 @@ export function bindShipping(root, state) {
     root.querySelector('#shipQty').value = state.qty;
     root.querySelectorAll('.ship-mode-btn').forEach((b) => b.classList.toggle('active', b.dataset.mode === state.mode));
     root.querySelector('#shipQtySection')?.classList.toggle('is-hidden', state.mode !== 'custom');
+    save();
     recompute(root);
   });
 

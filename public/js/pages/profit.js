@@ -15,6 +15,7 @@ import {
   getCostOverrides, setCostOverride,
   getHeadOverrides, setHeadOverride,
   getSiteFilter, setSiteFilter,
+  getShipState, saveShipState,
 } from '../store/profitStore.js';
 import { parseProfitFile, parsePurchaseFile, computeProfit } from '../services/profitCalc.js';
 import { renderShippingCompare, bindShipping } from '../components/shippingCompare.js';
@@ -24,15 +25,8 @@ let detailShowAll = false; // 全量明细是否展开零销量 SKU
 
 // 利润看板次导航：analysis = 利润分析；shipping = 海运空运对比
 let profitSubTab = 'analysis';
-const shipState = {
-  length: 40, width: 30, height: 20, weight: 2,
-  dimFactor: 5000,
-  seaMin: 21, seaRate: 12,
-  airMin: 21, airRate: 38,
-  purchaseCost: 0,
-  mode: 'auto',
-  qty: 100,
-};
+// 海运空运对比输入状态：刷新后保留上次使用的数据（来自 localStorage，与默认值合并）
+let shipState = getShipState();
 
 /* ===================== 排序（点击表头切换） ===================== */
 // 每张表独立的排序状态；模块级保留，rerender 不丢
@@ -434,7 +428,7 @@ function bindEvents(container, ctx) {
 
   // 「海运空运对比」tab：仅绑定对比输入，以下均为「利润分析」专用事件
   if (profitSubTab === 'shipping') {
-    bindShipping(container, shipState);
+    bindShipping(container, shipState, saveShipState);
     return;
   }
 

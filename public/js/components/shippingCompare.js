@@ -1,5 +1,5 @@
 /**
- * 海运空运成本对比
+ * 海运空运成本对比（内联页，作为「利润看板」的次导航页面）
  *
  * 输入：
  *   length / width / height  单件尺寸（cm）
@@ -16,7 +16,7 @@
  *   totalCny  = billW * rate                运费总额（CNY）
  *   perCny    = totalCny / qty              单件均摊
  *
- * 返回 null 表示输入不合法（返回 error 字段说明原因）。
+ * 本模块只做「数据输出」，不给出任何推荐结论。
  */
 
 function num(v, fallback = 0) {
@@ -30,6 +30,7 @@ function isValidPos(v) {
 }
 
 /**
+ * 纯函数计算，无副作用，便于测试与复用。
  * @param {{
  *   length:number, width:number, height:number, weight:number,
  *   dimFactor?:number,
@@ -74,22 +75,15 @@ export function computeShipping(input) {
   const sea = leg(seaMin, seaRate);
   const air = leg(airMin, airRate);
 
-  // 对比结论
+  // 仅为数据输出保留原始差额（不另作推荐判断）
   const diff = round3(sea.totalCny - air.totalCny);
-  const cheaper = diff === 0 ? 'same' : diff > 0 ? 'air' : 'sea'; // diff>0 海运贵，空运便宜
-  const savedAbs = round3(Math.abs(diff));
-  const cheaperTotal = Math.min(sea.totalCny, air.totalCny);
-  const savedPct = cheaperTotal > 0 ? round3(savedAbs / cheaperTotal) : 0;
 
   return {
     dimW,
     chargeW,
     sea,
     air,
-    diff,
-    cheaper, // 'sea' | 'air' | 'same'
-    savedAbs,
-    savedPct,
+    diff, // 海运运费 − 空运运费（仅作数据展示，正数表示空运更贵）
   };
 }
 
@@ -98,12 +92,8 @@ function round3(v) {
 }
 
 /* ============================================================
- * UI：渲染 modal
+ * UI：内联渲染（作为利润看板次导航页面，无弹窗 / 无推荐结论）
  * ============================================================ */
-import { openModal } from '../ui/modal.js';
-import { icon } from '../ui/icons.js';
-import { esc } from '../utils.js';
-
 const DEFAULTS = {
   length: 40, width: 30, height: 20, weight: 2,
   dimFactor: 5000,
@@ -111,24 +101,12 @@ const DEFAULTS = {
   airMin: 21, airRate: 38,
 };
 
-export function openShippingCompare(initial = {}) {
-  const data = { ...DEFAULTS, ...initial };
-  const root = document.createElement('div');
-  root.className = 'ship-modal-root';
-
-  const m = openModal({
-    title: '海运空运成本对比',
-    body: root,
-    width: 'wide',
-  });
-
-  root.innerHTML = buildHtml(data);
-  bind(root, m);
-  recompute(root);
-  return m;
-}
-
-function buildHtml(d) {
+/**
+ * 渲染对比工具的内联 HTML（输入面板 + 结果面板，仅输出数据）。
+ * @param {object} d 当前输入状态（含默认值的对象）
+ */
+export function renderShippingCompare(d = {}) {
+  const s = { ...DEFAULTS, ...d };
   return `
     <div class="ship-grid">
       <div class="ship-panel ship-panel-input">
@@ -137,16 +115,16 @@ function buildHtml(d) {
         <div class="ship-section">
           <div class="ship-section-label">单件尺寸（cm） & 重量</div>
           <div class="ship-row4">
-            <label>长 <input type="number" id="shipL" value="${d.length}" min="0" step="0.1"></label>
-            <label>宽 <input type="number" id="shipW" value="${d.width}" min="0" step="0.1"></label>
-            <label>高 <input type="number" id="shipH" value="${d.height}" min="0" step="0.1"></label>
-            <label>实重 kg <input type="number" id="shipWg" value="${d.weight}" min="0" step="0.001"></label>
+            <label>长 <input type="number" id="shipL" value="${s.length}" min="0" step="0.1"></label>
+            <label>宽 <input type="number" id="shipW" value="${s.width}" min="0" step="0.1"></label>
+            <label>高 <input type="number" id="shipH" value="${s.height}" min="0" step="0.1"></label>
+            <label>实重 kg <input type="number" id="shipWg" value="${s.weight}" min="0" step="0.001"></label>
           </div>
           <div class="ship-row1">
             <label>泡重系数
               <select id="shipDim" class="ship-select">
-                <option value="5000"${d.dimFactor == 5000 ? ' selected' : ''}>5000（标准）</option>
-                <option value="6000"${d.dimFactor == 6000 ? ' selected' : ''}>6000（宽松）</option>
+                <option value="5000"${s.dimFactor == 5000 ? ' selected' : ''}>5000（标准）</option>
+                <option value="6000"${s.dimFactor == 6000 ? ' selected' : ''}>6000（宽松）</option>
               </select>
             </label>
           </div>
@@ -156,16 +134,16 @@ function buildHtml(d) {
         <div class="ship-section">
           <div class="ship-section-label">🚢 海运</div>
           <div class="ship-row2">
-            <label>起收重量 kg <input type="number" id="shipSeaMin" value="${d.seaMin}" min="0" step="0.1"></label>
-            <label>单价 CNY/kg <input type="number" id="shipSeaRate" value="${d.seaRate}" min="0" step="0.1"></label>
+            <label>起收重量 kg <input type="number" id="shipSeaMin" value="${s.seaMin}" min="0" step="0.1"></label>
+            <label>单价 CNY/kg <input type="number" id="shipSeaRate" value="${s.seaRate}" min="0" step="0.1"></label>
           </div>
         </div>
 
         <div class="ship-section">
           <div class="ship-section-label">✈️ 空运</div>
           <div class="ship-row2">
-            <label>起收重量 kg <input type="number" id="shipAirMin" value="${d.airMin}" min="0" step="0.1"></label>
-            <label>单价 CNY/kg <input type="number" id="shipAirRate" value="${d.airRate}" min="0" step="0.1"></label>
+            <label>起收重量 kg <input type="number" id="shipAirMin" value="${s.airMin}" min="0" step="0.1"></label>
+            <label>单价 CNY/kg <input type="number" id="shipAirRate" value="${s.airRate}" min="0" step="0.1"></label>
           </div>
         </div>
 
@@ -177,7 +155,7 @@ function buildHtml(d) {
       </div>
 
       <div class="ship-panel ship-panel-result">
-        <div class="ship-panel-title">📊 对比结果</div>
+        <div class="ship-panel-title">📊 对比结果（仅数据）</div>
 
         <div class="ship-base">
           <span class="ship-base-item"><span class="ship-base-label">单件体积重</span><b id="rDimW">—</b></span>
@@ -189,7 +167,6 @@ function buildHtml(d) {
             <div class="ship-card-head">
               <span class="ship-card-ico">🚢</span>
               <span class="ship-card-name">海运</span>
-              <span class="ship-card-tag" id="seaTag"></span>
             </div>
             <div class="ship-card-row"><span>起收数量</span><b id="seaQty">—</b><span class="ship-card-unit">件</span></div>
             <div class="ship-card-row"><span>实际计费重</span><b id="seaW">—</b><span class="ship-card-unit">kg</span></div>
@@ -201,7 +178,6 @@ function buildHtml(d) {
             <div class="ship-card-head">
               <span class="ship-card-ico">✈️</span>
               <span class="ship-card-name">空运</span>
-              <span class="ship-card-tag" id="airTag"></span>
             </div>
             <div class="ship-card-row"><span>起收数量</span><b id="airQty">—</b><span class="ship-card-unit">件</span></div>
             <div class="ship-card-row"><span>实际计费重</span><b id="airW">—</b><span class="ship-card-unit">kg</span></div>
@@ -210,59 +186,78 @@ function buildHtml(d) {
           </div>
         </div>
 
-        <div class="ship-verdict" id="shipVerdict">—</div>
+        <div class="ship-delta" id="shipDelta">—</div>
       </div>
     </div>`;
 }
 
-function bind(root, m) {
+/**
+ * 绑定对比工具输入事件（就地重算，不整页刷新，保留输入焦点）。
+ * @param {HTMLElement} root 包含对比工具 DOM 的容器
+ * @param {object} state 外部输入状态对象（按引用同步，切回页面时保留）
+ */
+export function bindShipping(root, state) {
   const ids = ['shipL', 'shipW', 'shipH', 'shipWg', 'shipDim',
-               'shipSeaMin', 'shipSeaRate', 'shipAirMin', 'shipAirRate'];
-  const handler = () => recompute(root);
-  ids.forEach((id) => root.querySelector('#' + id).addEventListener('input', handler));
-  root.querySelector('#shipReset').addEventListener('click', () => {
-    for (const id of ids) {
-      const el = root.querySelector('#' + id);
-      const def = DEFAULTS[id === 'shipL' ? 'length'
-        : id === 'shipW' ? 'width'
-        : id === 'shipH' ? 'height'
-        : id === 'shipWg' ? 'weight'
-        : id === 'shipDim' ? 'dimFactor'
-        : id === 'shipSeaMin' ? 'seaMin'
-        : id === 'shipSeaRate' ? 'seaRate'
-        : id === 'shipAirMin' ? 'airMin'
-        : 'airRate'];
-      el.value = def;
-    }
+    'shipSeaMin', 'shipSeaRate', 'shipAirMin', 'shipAirRate'];
+
+  const syncFromInputs = () => {
+    state.length = Number(root.querySelector('#shipL').value);
+    state.width = Number(root.querySelector('#shipW').value);
+    state.height = Number(root.querySelector('#shipH').value);
+    state.weight = Number(root.querySelector('#shipWg').value);
+    state.dimFactor = Number(root.querySelector('#shipDim').value);
+    state.seaMin = Number(root.querySelector('#shipSeaMin').value);
+    state.seaRate = Number(root.querySelector('#shipSeaRate').value);
+    state.airMin = Number(root.querySelector('#shipAirMin').value);
+    state.airRate = Number(root.querySelector('#shipAirRate').value);
+  };
+
+  ids.forEach((id) => root.querySelector('#' + id)?.addEventListener('input', () => {
+    syncFromInputs();
+    recompute(root);
+  }));
+
+  root.querySelector('#shipReset')?.addEventListener('click', () => {
+    Object.assign(state, DEFAULTS);
+    root.querySelector('#shipL').value = state.length;
+    root.querySelector('#shipW').value = state.width;
+    root.querySelector('#shipH').value = state.height;
+    root.querySelector('#shipWg').value = state.weight;
+    root.querySelector('#shipDim').value = state.dimFactor;
+    root.querySelector('#shipSeaMin').value = state.seaMin;
+    root.querySelector('#shipSeaRate').value = state.seaRate;
+    root.querySelector('#shipAirMin').value = state.airMin;
+    root.querySelector('#shipAirRate').value = state.airRate;
     recompute(root);
   });
-}
 
-function readInputs(root) {
-  const v = (id) => root.querySelector('#' + id).value;
-  return {
-    length: v('shipL'),
-    width: v('shipW'),
-    height: v('shipH'),
-    weight: v('shipWg'),
-    dimFactor: v('shipDim'),
-    seaMin: v('shipSeaMin'),
-    seaRate: v('shipSeaRate'),
-    airMin: v('shipAirMin'),
-    airRate: v('shipAirRate'),
-  };
+  recompute(root);
 }
 
 function recompute(root) {
-  const r = computeShipping(readInputs(root));
+  const r = computeShipping({
+    length: root.querySelector('#shipL').value,
+    width: root.querySelector('#shipW').value,
+    height: root.querySelector('#shipH').value,
+    weight: root.querySelector('#shipWg').value,
+    dimFactor: root.querySelector('#shipDim').value,
+    seaMin: root.querySelector('#shipSeaMin').value,
+    seaRate: root.querySelector('#shipSeaRate').value,
+    airMin: root.querySelector('#shipAirMin').value,
+    airRate: root.querySelector('#shipAirRate').value,
+  });
+
   const errEl = root.querySelector('#shipError');
+  const delta = root.querySelector('#shipDelta');
+
   if (r.error) {
     errEl.textContent = r.error;
     clearResults(root);
-    root.querySelector('#shipVerdict').textContent = '—';
+    delta.textContent = '—';
     return;
   }
   errEl.textContent = '';
+
   root.querySelector('#rDimW').textContent = fmtKg(r.dimW);
   root.querySelector('#rChargeW').textContent = fmtKg(r.chargeW);
 
@@ -276,39 +271,13 @@ function recompute(root) {
   root.querySelector('#airTotal').textContent = fmtCNY(r.air.totalCny);
   root.querySelector('#airPer').textContent = fmtCNY(r.air.perCny);
 
-  const cardSea = root.querySelector('#cardSea');
-  const cardAir = root.querySelector('#cardAir');
-  const seaTag = root.querySelector('#seaTag');
-  const airTag = root.querySelector('#airTag');
-  cardSea.classList.remove('is-winner', 'is-loser', 'is-tie');
-  cardAir.classList.remove('is-winner', 'is-loser', 'is-tie');
-  seaTag.textContent = '';
-  airTag.textContent = '';
-
-  const verdict = root.querySelector('#shipVerdict');
-  if (r.cheaper === 'same') {
-    cardSea.classList.add('is-tie'); cardAir.classList.add('is-tie');
-    seaTag.textContent = '持平'; airTag.textContent = '持平';
-    verdict.innerHTML = `两边运费一致：<b>${fmtCNY(r.sea.totalCny)}</b>`;
-    verdict.className = 'ship-verdict ship-verdict-tie';
-  } else if (r.cheaper === 'air') {
-    cardAir.classList.add('is-winner'); cardSea.classList.add('is-loser');
-    airTag.textContent = '✓ 推荐';
-    seaTag.textContent = '偏高';
-    verdict.innerHTML = `✈️ 空运更划算 — 比海运便宜 <b>${fmtCNY(r.savedAbs)}</b>（节省 ${(r.savedPct * 100).toFixed(1)}%）`;
-    verdict.className = 'ship-verdict ship-verdict-good';
-  } else {
-    cardSea.classList.add('is-winner'); cardAir.classList.add('is-loser');
-    seaTag.textContent = '✓ 推荐';
-    airTag.textContent = '偏高';
-    verdict.innerHTML = `🚢 海运更划算 — 比空运便宜 <b>${fmtCNY(r.savedAbs)}</b>（节省 ${(r.savedPct * 100).toFixed(1)}%）`;
-    verdict.className = 'ship-verdict ship-verdict-good';
-  }
+  // 中性数据行：仅列出两路运费与差额，不作任何推荐判断
+  delta.innerHTML = `运费对比：海运 <b>${fmtCNY(r.sea.totalCny)}</b> ｜ 空运 <b>${fmtCNY(r.air.totalCny)}</b> ｜ 差额（空运 − 海运） = <b>${fmtCNY(r.diff)}</b>`;
 }
 
 function clearResults(root) {
   ['#rDimW', '#rChargeW', '#seaQty', '#seaW', '#seaTotal', '#seaPer',
-   '#airQty', '#airW', '#airTotal', '#airPer'].forEach((s) => {
+    '#airQty', '#airW', '#airTotal', '#airPer'].forEach((s) => {
     root.querySelector(s).textContent = '—';
   });
 }

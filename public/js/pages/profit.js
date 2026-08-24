@@ -17,10 +17,19 @@ import {
   getSiteFilter, setSiteFilter,
 } from '../store/profitStore.js';
 import { parseProfitFile, parsePurchaseFile, computeProfit } from '../services/profitCalc.js';
-import { openShippingCompare } from '../components/shippingCompare.js';
+import { renderShippingCompare, bindShipping } from '../components/shippingCompare.js';
 
 const LOSS_DISPLAY = 25; // 亏损预警默认展示条数
 let detailShowAll = false; // 全量明细是否展开零销量 SKU
+
+// 利润看板次导航：analysis = 利润分析；shipping = 海运空运对比
+let profitSubTab = 'analysis';
+const shipState = {
+  length: 40, width: 30, height: 20, weight: 2,
+  dimFactor: 5000,
+  seaMin: 21, seaRate: 12,
+  airMin: 21, airRate: 38,
+};
 
 /* ===================== 排序（点击表头切换） ===================== */
 // 每张表独立的排序状态；模块级保留，rerender 不丢
@@ -102,17 +111,31 @@ export function render(container, ctx) {
 
   container.innerHTML = `
   <div class="pf-wrap">
+    ${subNav()}
+    ${profitSubTab === 'shipping'
+      ? renderShippingCompare(shipState)
+      : renderAnalysisBody({ params, report, purchase, overrides, headOverrides, siteFilter, result, hasReport, viewTop, viewLoss, viewAd, viewRows })}
+  </div>`;
+
+  bindEvents(container, ctx);
+}
+
+/* ===================== 次导航栏 ===================== */
+function subNav() {
+  const tab = (id, label) => `<button class="pf-subnav-tab ${profitSubTab === id ? 'active' : ''}" data-sub="${id}">${label}</button>`;
+  return `
+  <div class="pf-subnav">
+    ${tab('analysis', '📊 利润分析')}
+    ${tab('shipping', '🚢 海运空运对比')}
+  </div>`;
+}
+
+/* ===================== 利润分析主体（原「利润看板」全部内容） ===================== */
+function renderAnalysisBody(o) {
+  const { params, report, purchase, overrides, headOverrides, siteFilter, result, hasReport, viewTop, viewLoss, viewAd, viewRows } = o;
+  return `
     <input type="file" id="pfReportFile" accept=".xlsx,.xls,.csv" hidden>
     <input type="file" id="pfPurchaseFile" accept=".xlsx,.xls,.csv" hidden>
-
-    <div class="ship-entry" id="pfShipEntry" role="button" tabindex="0" title="点击打开海运空运成本对比工具">
-      <div class="ship-entry-ico">🚢</div>
-      <div class="ship-entry-body">
-        <div class="ship-entry-title">海运空运成本对比</div>
-        <div class="ship-entry-sub">输入单件尺寸 / 重量 + 海空运起收重量与单价，自动算最少起收件数与两者运费差额</div>
-      </div>
-      <div class="ship-entry-arrow">${icon('arrowRight')}</div>
-    </div>
 
     <div class="sa-toolbar">
       <div class="sa-toolbar-info">
@@ -140,10 +163,7 @@ export function render(container, ctx) {
       ${renderLoss(viewLoss)}
       ${renderAd(viewAd)}
       ${renderDetail(viewRows, overrides, headOverrides, purchase ? purchase.map : {})}
-    `}
-  </div>`;
-
-  bindEvents(container, ctx);
+    `}`;
 }
 
 /* ===================== 参数卡（可手动改成本） ===================== */
@@ -401,14 +421,18 @@ function section(title, inner) {
 
 /* ===================== 事件 ===================== */
 function bindEvents(container, ctx) {
-  // 海运空运对比入口（点击 / 键盘 Enter / Space）
-  const shipEntry = container.querySelector('#pfShipEntry');
-  if (shipEntry) {
-    const open = () => openShippingCompare();
-    shipEntry.addEventListener('click', open);
-    shipEntry.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); }
+  // 次导航栏切换（两个 tab 都需可点击，故在最前绑定）
+  container.querySelectorAll('.pf-subnav-tab').forEach((el) => {
+    el.addEventListener('click', () => {
+      profitSubTab = el.dataset.sub;
+      ctx.rerender();
     });
+  });
+
+  // 「海运空运对比」tab：仅绑定对比输入，以下均为「利润分析」专用事件
+  if (profitSubTab === 'shipping') {
+    bindShipping(container, shipState);
+    return;
   }
 
   container.querySelector('#pfImportReport')?.addEventListener('click', () => container.querySelector('#pfReportFile')?.click());

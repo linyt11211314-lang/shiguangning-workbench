@@ -16,6 +16,7 @@ let filter = '';
 let currentPage = 0;
 let selectedIds = new Set();
 let currentCategory = CATEGORIES[0].id;
+let statusFilter = (typeof localStorage !== 'undefined' && localStorage.getItem('lib.statusFilter')) || 'all'; // all | uploaded | unuploaded
 
 // 存储层错误（IndexedDB 写入失败等）→ 全局提示
 try {
@@ -140,6 +141,14 @@ export function render(container, { navigate, rerender }) {
     </div>
 
     <div class="card" style="padding:12px 16px;margin-bottom:16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <div class="lib-status-filter">
+        <span class="lib-status-label">状态</span>
+        <div class="segmented" data-status-seg>
+          <button class="seg-item ${statusFilter === 'all' ? 'active' : ''}" data-status="all">全部</button>
+          <button class="seg-item ${statusFilter === 'uploaded' ? 'active' : ''}" data-status="uploaded">已上传</button>
+          <button class="seg-item ${statusFilter === 'unuploaded' ? 'active' : ''}" data-status="unuploaded">未上传</button>
+        </div>
+      </div>
       <div class="flex-1" style="position:relative;min-width:220px">
         <span class="search-icon">${icon('search')}</span>
         <input class="input" data-search placeholder="搜索产品名称 / 类目 / 1688链接..." style="padding-left:38px;background:var(--card-soft)">
@@ -162,6 +171,14 @@ export function render(container, { navigate, rerender }) {
   container.querySelector('[data-search]').addEventListener('input', (e) => {
     filter = e.target.value.trim().toLowerCase();
     renderGrid();
+  });
+  // 状态筛选（全部 / 已上传 / 未上传）：持久化到 localStorage，整页刷新保留
+  container.querySelectorAll('[data-status]').forEach((b) => {
+    b.addEventListener('click', () => {
+      statusFilter = b.dataset.status;
+      try { localStorage.setItem('lib.statusFilter', statusFilter); } catch (_) {}
+      rerender();
+    });
   });
   container.querySelector('[data-add]').addEventListener('click', () => openProductModal(null, rerender));
 
@@ -232,6 +249,8 @@ export function render(container, { navigate, rerender }) {
   function renderGrid() {
     const grid = container.querySelector('[data-grid]');
     let list = products.filter((p) => p.category === currentCategory);
+    if (statusFilter === 'uploaded') list = list.filter((p) => p.uploaded);
+    else if (statusFilter === 'unuploaded') list = list.filter((p) => !p.uploaded);
     if (filter) {
       list = list.filter((p) =>
         `${p.name} ${p.productCategory} ${p.supply1688} ${p.description}`.toLowerCase().includes(filter));
@@ -268,6 +287,7 @@ export function render(container, { navigate, rerender }) {
             <span>规格</span>
             <span>利润总览</span>
             <span>选品时间</span>
+            <span>已上传</span>
             <span style="text-align:right">操作</span>
           </div>
           ${list.map((p) => {
@@ -306,6 +326,11 @@ export function render(container, { navigate, rerender }) {
             <div class="lib-cell size">${sizeText}</div>
             <div class="lib-cell profit">${profitText}</div>
             <div class="lib-cell">${formatDate(p.createdAt)}</div>
+            <div class="lib-cell lib-uploaded">
+              <label class="lib-check" title="标记是否已上传">
+                <input type="checkbox" data-uploaded="${p.id}" ${p.uploaded ? 'checked' : ''}>
+              </label>
+            </div>
             <div class="lib-actions">
               <button class="btn btn-primary btn-sm" data-import="${p.id}">${icon('sparkles')} 创建 Listing</button>
               <button class="btn btn-ghost btn-sm" data-edit="${p.id}">${icon('edit')} 编辑</button>
@@ -338,6 +363,16 @@ export function render(container, { navigate, rerender }) {
         const all = grid.querySelectorAll('[data-check]');
         checkAll.checked = all.length > 0 && [...all].every((c) => c.checked);
         updateBulkBar();
+      });
+    });
+    // 「已上传」手动勾选：即时保存，筛选非全部时局部重渲保留其它状态
+    grid.querySelectorAll('[data-uploaded]').forEach((cb) => {
+      cb.addEventListener('change', (e) => {
+        e.stopPropagation();
+        const id = cb.dataset.uploaded;
+        updateProductTracked(id, { uploaded: cb.checked });
+        toastSuccess(cb.checked ? '已标记为「已上传」' : '已标记为「未上传」');
+        if (statusFilter !== 'all') renderGrid();
       });
     });
     grid.querySelectorAll('.lib-table-row').forEach((row) => {
@@ -646,6 +681,10 @@ function openProductModal(existing, onDone) {
     <div data-site-cards></div>
     <div data-quote-summary></div>
 
+    <div class="field" style="display:flex;align-items:center;gap:10px;margin-bottom:0">
+      <label class="switch"><input type="checkbox" data-f="uploaded"><span class="track"></span></label>
+      <span class="field-label" style="margin:0">已上传到店铺 <span class="hint">用于选品库「已上传 / 未上传」筛选</span></span>
+    </div>
     <div class="field">
       <div class="field-label">产品描述 <span class="hint">导入工坊时自动带入</span></div>
       <textarea class="textarea" data-f="description" rows="3" placeholder="产品描述 / 卖点素材"></textarea>
@@ -1018,6 +1057,7 @@ function openProductModal(existing, onDone) {
     if (amazonSync) amazonSync();
     body.querySelector('[data-f="productCategory"]').value = src.productCategory || '';
     body.querySelector('[data-f="description"]').value = src.description || '';
+    body.querySelector('[data-f="uploaded"]').checked = Boolean(src.uploaded);
     selectedTier = PRICE_TIER_IDS.includes(src.selectedPriceTier) ? src.selectedPriceTier : 'aggressive';
     // 分类单选
     const ec = CATEGORY_IDS.includes(src.category) ? src.category : CATEGORIES[0].id;
@@ -1122,6 +1162,7 @@ function openProductModal(existing, onDone) {
       priceTiers: lastTiers || null,
       price,
       description: body.querySelector('[data-f="description"]').value.trim(),
+      uploaded: body.querySelector('[data-f="uploaded"]').checked,
     };
   }
   function setStatus(state, text) {

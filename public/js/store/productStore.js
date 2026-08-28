@@ -239,6 +239,7 @@ export function normalizeProduct(p) {
   out.price = (out.price != null && out.price !== '') ? out.price : (out.quote && out.quote.result && out.quote.result.price != null ? out.quote.result.price : '');
   out.draftSaved = Boolean(out.draftSaved);
   out.localDraft = out.localDraft || null;
+  out.uploaded = Boolean(out.uploaded);
   return out;
 }
 
@@ -280,6 +281,7 @@ export function addProduct(data) {
     price: data.price != null ? data.price : '',
     draftSaved: Boolean(data.draftSaved),
     localDraft: data.localDraft || null,
+    uploaded: Boolean(data.uploaded),
     description: data.description || '',
     keywords: data.keywords || '',
     createdAt: now,

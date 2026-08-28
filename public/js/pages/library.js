@@ -327,8 +327,9 @@ export function render(container, { navigate, rerender }) {
             <div class="lib-cell profit">${profitText}</div>
             <div class="lib-cell">${formatDate(p.createdAt)}</div>
             <div class="lib-cell lib-uploaded">
-              <label class="lib-check" title="标记是否已上传">
+              <label class="switch" title="点击切换「已上传 / 未上传」">
                 <input type="checkbox" data-uploaded="${p.id}" ${p.uploaded ? 'checked' : ''}>
+                <span class="track"></span>
               </label>
             </div>
             <div class="lib-actions">

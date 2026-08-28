@@ -153,6 +153,8 @@ export function render(container, { navigate, rerender }) {
         <span class="search-icon">${icon('search')}</span>
         <input class="input" data-search placeholder="搜索产品名称 / 类目 / 1688链接..." style="padding-left:38px;background:var(--card-soft)">
       </div>
+      <button class="btn btn-soft" data-bulk-upload style="display:none" title="批量标记为「已上传」">${icon('check')} 标记已上传(<span data-bulk-count>0</span>)</button>
+      <button class="btn btn-soft" data-bulk-unupload style="display:none" title="批量标记为「未上传」">${icon('x')} 标记未上传(<span data-bulk-count>0</span>)</button>
       <button class="btn btn-danger-soft" data-bulk-del style="display:none" title="批量删除所选产品">${icon('trash')} 删除所选(<span data-bulk-count>0</span>)</button>
     </div>
 
@@ -238,12 +240,14 @@ export function render(container, { navigate, rerender }) {
   }
 
   function updateBulkBar() {
-    const btn = container.querySelector('[data-bulk-del]');
-    if (!btn) return;
+    const buttons = container.querySelectorAll('[data-bulk-del], [data-bulk-upload], [data-bulk-unupload]');
+    if (!buttons.length) return;
     const count = selectedIds.size;
-    btn.style.display = count > 0 ? 'inline-flex' : 'none';
-    const span = btn.querySelector('[data-bulk-count]');
-    if (span) span.textContent = count;
+    buttons.forEach((btn) => {
+      btn.style.display = count > 0 ? 'inline-flex' : 'none';
+      const span = btn.querySelector('[data-bulk-count]');
+      if (span) span.textContent = count;
+    });
   }
 
   function renderGrid() {
@@ -327,10 +331,9 @@ export function render(container, { navigate, rerender }) {
             <div class="lib-cell profit">${profitText}</div>
             <div class="lib-cell">${formatDate(p.createdAt)}</div>
             <div class="lib-cell lib-uploaded">
-              <label class="switch" title="点击切换「已上传 / 未上传」">
-                <input type="checkbox" data-uploaded="${p.id}" ${p.uploaded ? 'checked' : ''}>
-                <span class="track"></span>
-              </label>
+              <span class="lib-status-pill ${p.uploaded ? 'is-uploaded' : ''}" title="${p.uploaded ? '已上传' : '未上传'}">
+                ${p.uploaded ? '✓ 已上传' : '—'}
+              </span>
             </div>
             <div class="lib-actions">
               <button class="btn btn-primary btn-sm" data-import="${p.id}">${icon('sparkles')} 创建 Listing</button>
@@ -366,16 +369,7 @@ export function render(container, { navigate, rerender }) {
         updateBulkBar();
       });
     });
-    // 「已上传」手动勾选：即时保存，筛选非全部时局部重渲保留其它状态
-    grid.querySelectorAll('[data-uploaded]').forEach((cb) => {
-      cb.addEventListener('change', (e) => {
-        e.stopPropagation();
-        const id = cb.dataset.uploaded;
-        updateProductTracked(id, { uploaded: cb.checked });
-        toastSuccess(cb.checked ? '已标记为「已上传」' : '已标记为「未上传」');
-        if (statusFilter !== 'all') renderGrid();
-      });
-    });
+    // 「已上传」批量操作由顶部批量条按钮处理（data-bulk-upload / data-bulk-unupload）
     grid.querySelectorAll('.lib-table-row').forEach((row) => {
       row.addEventListener('click', (e) => {
         if (e.target.closest('button') || e.target.closest('a') || e.target.closest('.lib-check')) return;
@@ -450,6 +444,38 @@ export function render(container, { navigate, rerender }) {
         rerender();
       },
     });
+  });
+
+  // 批量标记为「已上传」
+  const bulkUploadBtn = container.querySelector('[data-bulk-upload]');
+  bulkUploadBtn.addEventListener('click', () => {
+    const ids = [...selectedIds];
+    if (!ids.length) return;
+    ids.forEach((id) => {
+      updateProductTracked(id, { uploaded: true });
+      const idx = products.findIndex((p) => p.id === id);
+      if (idx >= 0) products[idx].uploaded = true;
+    });
+    toastSuccess(`已将 ${ids.length} 个产品标记为「已上传」`);
+    selectedIds.clear();
+    updateBulkBar();
+    renderGrid();
+  });
+
+  // 批量标记为「未上传」
+  const bulkUnuploadBtn = container.querySelector('[data-bulk-unupload]');
+  bulkUnuploadBtn.addEventListener('click', () => {
+    const ids = [...selectedIds];
+    if (!ids.length) return;
+    ids.forEach((id) => {
+      updateProductTracked(id, { uploaded: false });
+      const idx = products.findIndex((p) => p.id === id);
+      if (idx >= 0) products[idx].uploaded = false;
+    });
+    toastSuccess(`已将 ${ids.length} 个产品标记为「未上传」`);
+    selectedIds.clear();
+    updateBulkBar();
+    renderGrid();
   });
 
   renderGrid();

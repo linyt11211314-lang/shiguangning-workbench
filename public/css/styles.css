@@ -756,11 +756,10 @@ html, body {
 .lib-check { display: flex; align-items: center; justify-content: center; }
 .lib-check input { width: 16px; height: 16px; accent-color: var(--primary); cursor: pointer; }
 
-/* 「已上传」状态切换开关：与弹窗 .switch 视觉一致，明示可点击 */
+/* 「已上传」状态展示（不可点击的徽标，配合顶部批量条按钮使用） */
 .lib-cell.lib-uploaded { display: flex; align-items: center; justify-content: center; }
-.lib-cell.lib-uploaded .switch { width: 36px; height: 22px; }
-.lib-cell.lib-uploaded .switch .track::after { width: 16px; height: 16px; }
-.lib-cell.lib-uploaded .switch input:checked + .track::after { transform: translateX(14px); }
+.lib-status-pill { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--text-sub); }
+.lib-status-pill.is-uploaded { color: var(--primary, #c75b7a); font-weight: 500; }
 .lib-thumb-sm {
   width: 46px; height: 46px; border-radius: 11px; overflow: hidden;
   background: var(--bg-deep); border: 1px solid var(--border);

@@ -2028,6 +2028,8 @@ html, body {
 .sa-alert-critical { border-left: 3px solid var(--red); }
 .sa-alert-warning { border-left: 3px solid #E8B73E; }
 .sa-alert-ok { border-left: 3px solid var(--border-strong); }
+.sa-alert-ignored { opacity: .55; background: var(--card-soft, #f8f8fa); }
+.sa-alert-ignored .sa-alert-sku { text-decoration: line-through; text-decoration-color: var(--text-faint); }
 .sa-alert-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .sa-alert-actions-inline { margin-left: auto; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 .sa-alert-actions-inline .btn { box-shadow: none; }

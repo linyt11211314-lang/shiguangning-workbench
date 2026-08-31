@@ -60,6 +60,23 @@ export function markRestocked(sku) {
   saveOps(ops);
 }
 
+/* 忽略补货：降价清货等不再补货的 SKU；与已补货/已生成采购单并存 */
+export function markIgnored(sku) {
+  const ops = getOps();
+  ops[sku] = ops[sku] || {};
+  ops[sku].ignoredAt = new Date().toISOString();
+  saveOps(ops);
+}
+
+export function unmarkIgnored(sku) {
+  const ops = getOps();
+  if (ops[sku] && ops[sku].ignoredAt) {
+    delete ops[sku].ignoredAt;
+    if (!Object.keys(ops[sku]).length) delete ops[sku];
+    saveOps(ops);
+  }
+}
+
 export function clearOps() {
   try { localStorage.removeItem(OPS_KEY); } catch (_) {}
 }

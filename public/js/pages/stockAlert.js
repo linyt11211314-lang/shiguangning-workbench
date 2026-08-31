@@ -11,14 +11,17 @@ import { esc } from '../utils.js';
 import { toastSuccess, toastError, toastInfo } from '../ui/toast.js';
 import { confirmDialog } from '../ui/modal.js';
 import {
-  getParams, saveParams, getOps, markPoGenerated, markRestocked, clearOps,
+  getParams, saveParams, getOps, markPoGenerated, markRestocked, markIgnored, unmarkIgnored, clearOps,
   getStockData, saveStockData,
 } from '../store/stockAlertStore.js';
 import { autoMap, buildRows, MAX_UPLOAD_MB, ACCEPT } from '../services/dataImport.js';
 
 /* ===================== 页面状态 ===================== */
 const PAGE_SIZE = 30;
-const pageState = { filter: 'pending', visible: PAGE_SIZE, onlyNeed: false };
+const SHOW_IGNORED_KEY = 'sgn.stockalert.showIgnored';
+let _showIgnored = false;
+try { _showIgnored = localStorage.getItem(SHOW_IGNORED_KEY) === '1'; } catch (_) {}
+const pageState = { filter: 'pending', visible: PAGE_SIZE, onlyNeed: false, showIgnored: _showIgnored };
 
 /* ===================== 工具 ===================== */
 function num(v) {
@@ -76,6 +79,7 @@ export function buildAlerts(data, params, ops) {
     const fbaStock = num(r.fbaStock);
     const fbaInTransit = num(r.fbaInTransit);
     const cost = num(r.cost);
+    const price = num(r.price);
     const name = String(r.name || '').trim() || sku;
 
     // 预计可售天数
@@ -120,7 +124,7 @@ export function buildAlerts(data, params, ops) {
     list.push({
       sku, name, fbaStock, fbaInTransit, sales30,
       dailySales: daily, daysOfStock, outOfStockDate, arrivalDate,
-      risk, status, riskMessage, suggested, suggestedNote, cost, op,
+      risk, status, riskMessage, suggested, suggestedNote, cost, price, op,
     });
   }
   // 排序：critical 前、warning 后；组内按预计可售天数升序（越紧急越靠前）
@@ -130,7 +134,7 @@ export function buildAlerts(data, params, ops) {
 }
 
 /* ===================== 表格解析 ===================== */
-const TPL = ['MSKU', '品名', 'FBA-可售', 'FBA-在途', '30天销量', '采购成本'];
+const TPL = ['MSKU', '品名', 'FBA-可售', 'FBA-在途', '30天销量', '采购成本', '售价'];
 
 async function parseStockFile(file) {
   if (typeof XLSX === 'undefined') throw new Error('Excel 组件未加载，请刷新页面重试');
@@ -171,6 +175,7 @@ async function parseStockFile(file) {
         fbaInTransit: num(o['FBA-在途']),
         sales30: num(o['30天销量']),
         cost: num(o['采购成本']),
+        price: num(o['售价']),
       }))
       .filter((r) => r.sku);
     return { fileName: file.name, sheetName: sn, rows };
@@ -185,20 +190,24 @@ export function render(container, ctx) {
   const data = getStockData();
   const alerts = buildAlerts(data, params, ops);
 
+  // 忽略过滤：默认不显示已忽略 SKU；开启「显示已忽略」时全部展示
+  const showIgnored = pageState.showIgnored;
+  const includeIgnored = (a) => showIgnored || !a.op.ignoredAt;
   // 按状态分组（待补货的排除已补货）
   // 「只看需补货的」：剔除标记「暂无补货必要 / 暂无需补货」的卡片
   const isNoNeed = (a) => a.risk === 'ok' || /暂无补货必要|暂无需补货/.test(a.suggestedNote || '');
   const need = (list) => (pageState.onlyNeed ? list.filter((a) => !isNoNeed(a)) : list);
 
-  const allCritical = need(alerts.filter((a) => a.risk === 'critical' && !a.op.restockedAt));
-  const allWarning = need(alerts.filter((a) => a.risk === 'warning' && !a.op.restockedAt));
-  const allOk = need(alerts.filter((a) => a.risk === 'ok'));
+  const allCritical = need(alerts.filter((a) => a.risk === 'critical' && !a.op.restockedAt && includeIgnored(a)));
+  const allWarning = need(alerts.filter((a) => a.risk === 'warning' && !a.op.restockedAt && includeIgnored(a)));
+  const allOk = need(alerts.filter((a) => a.risk === 'ok' && includeIgnored(a)));
   const allPending = [...allCritical, ...allWarning];
 
   const cntAll = allPending.length;
   const cntCritical = allCritical.length;
   const cntWarning = allWarning.length;
   const cntOk = allOk.length;
+  const ignoredCount = alerts.filter((a) => a.op.ignoredAt).length;
 
   // 当前过滤
   let filteredList;
@@ -245,6 +254,7 @@ export function render(container, ctx) {
         <label>运输时间（采购+物流）天 <input type="number" id="saTransit" value="${params.transitDays}" min="1" max="365"></label>
         <label>补货增量系数 <input type="number" id="saMultiplier" value="${params.multiplier}" min="0.5" max="5" step="0.1"></label>
         <label class="sa-onlyneed"><input type="checkbox" id="saOnlyNeed" ${pageState.onlyNeed ? 'checked' : ''}> 只看需补货的（隐藏「暂无补货必要」）</label>
+        <label class="sa-onlyneed"><input type="checkbox" id="saShowIgnored" ${showIgnored ? 'checked' : ''}> 显示已忽略（${ignoredCount}）</label>
       </div>
     </div>
 
@@ -272,6 +282,7 @@ export function render(container, ctx) {
         <span>📋 补货建议清单 · ${esc(filterLabel)}（${filteredList.length} 条）</span>
         <div class="sa-section-head-right">
           ${processedCount > 0 ? `<button class="btn btn-ghost btn-sm" id="saShowDone">已处理 ${processedCount} · 清除</button>` : ''}
+          ${ignoredCount > 0 && !showIgnored ? `<button class="btn btn-ghost btn-sm" id="saToggleIgnored">已忽略 ${ignoredCount} · 显示</button>` : ''}
           <button class="btn btn-soft btn-sm" id="saExportBtn" ${filteredList.length ? '' : 'disabled'}>${icon('download')} 导出 Excel</button>
         </div>
       </div>
@@ -304,25 +315,29 @@ export function render(container, ctx) {
 }
 
 function alertCard(a) {
+  const ignored = !!a.op.ignoredAt;
   const badge = a.risk === 'critical'
     ? '<span class="sa-badge sa-badge-red">🔴 需立即补货</span>'
     : a.risk === 'warning'
       ? '<span class="sa-badge sa-badge-yellow">🟡 即将断货</span>'
       : '<span class="sa-badge sa-badge-ok">🟢 库存充足</span>';
-  const meta = a.risk === 'ok'
-    ? '<span class="sa-done-muted">暂无补货需求</span>'
-    : '';
+  const priceText = a.price > 0 ? '¥' + round2(a.price) : '—';
+  const actionBtn = ignored
+    ? `<span class="sa-done-muted" title="已忽略：${shortDate(a.op.ignoredAt)}">已忽略</span>
+       <button class="btn btn-ghost btn-sm" data-unignore="${esc(a.sku)}" title="恢复参与补货建议">恢复</button>`
+    : `<button class="btn btn-soft btn-sm" data-ignore="${esc(a.sku)}" title="标记为不再补货（降价清货等）">忽略</button>`;
   return `
-  <div class="sa-alert sa-alert-${a.risk}">
+  <div class="sa-alert sa-alert-${a.risk}${ignored ? ' sa-alert-ignored' : ''}">
     <div class="sa-alert-head">
       ${badge}
       <b class="sa-alert-sku">${esc(a.sku)}</b>
       <span class="sa-alert-name">${esc(a.name)}</span>
-      <div class="sa-alert-actions-inline">${meta}</div>
+      <div class="sa-alert-actions-inline">${actionBtn}</div>
     </div>
     <div class="sa-alert-meta">
       可售 <b>${fmtInt(a.fbaStock)}</b> · 在途 <b>${fmtInt(a.fbaInTransit)}</b> · 日销 <b>${round2(a.dailySales)}</b>
       · 预计可售 <b>${fmtDays(a.daysOfStock)} 天</b> · 断货 <b>${shortDate(a.outOfStockDate)}</b>
+      · 售价 <b>${priceText}</b>
     </div>
     ${a.risk !== 'ok' ? `
     <div class="sa-alert-risk">${esc(a.riskMessage)}</div>
@@ -381,6 +396,22 @@ function bindEvents(container, ctx, visible, filteredList) {
     ctx.rerender();
   });
 
+  // 显示已忽略 开关（持久化）
+  container.querySelector('#saShowIgnored')?.addEventListener('change', (e) => {
+    pageState.showIgnored = e.target.checked;
+    try { localStorage.setItem(SHOW_IGNORED_KEY, e.target.checked ? '1' : '0'); } catch (_) {}
+    pageState.visible = PAGE_SIZE;
+    ctx.rerender();
+  });
+
+  // 顶部「已忽略 N · 显示」快捷按钮
+  container.querySelector('#saToggleIgnored')?.addEventListener('click', () => {
+    pageState.showIgnored = true;
+    try { localStorage.setItem(SHOW_IGNORED_KEY, '1'); } catch (_) {}
+    pageState.visible = PAGE_SIZE;
+    ctx.rerender();
+  });
+
   // 加载更多 / 收起
   container.querySelector('#saLoadMore')?.addEventListener('click', () => {
     if (filteredList.length > pageState.visible) {
@@ -405,6 +436,22 @@ function bindEvents(container, ctx, visible, filteredList) {
     });
   });
 
+  // 忽略 / 恢复 补货
+  container.querySelectorAll('[data-ignore]').forEach((el) => {
+    el.addEventListener('click', () => {
+      markIgnored(el.dataset.ignore);
+      toastSuccess('已忽略该 SKU 的补货建议');
+      ctx.rerender();
+    });
+  });
+  container.querySelectorAll('[data-unignore]').forEach((el) => {
+    el.addEventListener('click', () => {
+      unmarkIgnored(el.dataset.unignore);
+      toastSuccess('已恢复参与补货');
+      ctx.rerender();
+    });
+  });
+
   container.querySelector('#saSaveParams')?.addEventListener('click', () => {
     const val = (id) => container.querySelector(id)?.value;
     saveParams({
@@ -425,7 +472,7 @@ function bindEvents(container, ctx, visible, filteredList) {
 function exportExcel(pending) {
   if (!pending.length) { toastInfo('当前筛选下没有可导出的 SKU'); return; }
   if (typeof XLSX === 'undefined') { toastError('Excel 组件未加载，请刷新页面重试'); return; }
-  const head = ['SKU', '品名', 'FBA-可售', 'FBA-在途', '近30天销量', '日均销量', '预计可售天数', '预计断货日期', '风险等级', '断货风险提示', '建议补货量', '预计到仓日期', '采购成本', '预估采购金额'];
+  const head = ['SKU', '品名', 'FBA-可售', 'FBA-在途', '近30天销量', '日均销量', '预计可售天数', '预计断货日期', '风险等级', '断货风险提示', '建议补货量', '预计到仓日期', '采购成本', '预估采购金额', '售价', '是否已忽略'];
   const aoa = [head];
   for (const a of pending) {
     aoa.push([
@@ -433,13 +480,15 @@ function exportExcel(pending) {
       round2(a.dailySales), fmtDays(a.daysOfStock), a.outOfStockDate || '—',
       a.status, a.riskMessage, a.suggested, a.arrivalDate,
       a.cost, a.suggested * a.cost,
+      a.price || '',
+      a.op && a.op.ignoredAt ? '是' : '',
     ]);
   }
   const ws = XLSX.utils.aoa_to_sheet(aoa);
   ws['!cols'] = [
     { wch: 15 }, { wch: 26 }, { wch: 9 }, { wch: 9 }, { wch: 12 }, { wch: 9 },
     { wch: 12 }, { wch: 13 }, { wch: 12 }, { wch: 42 }, { wch: 11 }, { wch: 12 },
-    { wch: 9 }, { wch: 13 },
+    { wch: 9 }, { wch: 13 }, { wch: 10 }, { wch: 11 },
   ];
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, '补货计划');

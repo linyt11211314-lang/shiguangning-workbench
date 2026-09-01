@@ -162,6 +162,7 @@ function headerHTML() {
       <div class="an-actions">
         <button class="btn btn-soft" data-act="upload" ${state.busy ? 'disabled' : ''}>${icon('upload')} 上传领星数据</button>
         <button class="btn btn-ghost" data-act="tpl" ${state.busy ? 'disabled' : ''}>${icon('file')} ${state.tpl ? '更换模板' : '加载模板'}</button>
+        <button class="btn btn-soft" data-act="preview-report" ${canGenerate() && !state.busy ? '' : 'disabled'}>${state.busy ? '<span class="btn-spin"></span>' : icon('eye')} 预览报告</button>
         <button class="btn btn-primary" data-act="gen" ${canGenerate() && !state.busy ? '' : 'disabled'}>
           ${state.busy ? '<span class="btn-spin"></span>' : icon('zap')} 一键生成报告
         </button>
@@ -409,6 +410,7 @@ function bind() {
         }
         srcInput.click();
       } else if (act === 'gen') doGenerate();
+      else if (act === 'preview-report') doPreviewReport();
       else if (act === 'tpl-del') doDeleteTemplate();
       else if (act === 'map') openMappingModal();
       else if (act === 'preview') openPreviewModal();
@@ -820,6 +822,133 @@ async function doGenerate() {
     paint();
     toastError(`报告生成失败：${err.message || '未知错误'}`);
   }
+}
+
+/* ===================== 报告预览 ===================== */
+const PREVIEW_MAX_ROWS = 100;
+
+/** 一键预览报告：生成后不下载，反读各 Sheet 在弹窗内展示 */
+async function doPreviewReport() {
+  if (!canGenerate()) {
+    toastError(state.tpl ? '请先上传领星数据' : '请先加载报表模板');
+    return;
+  }
+  state.busy = true;
+  state.progress = 0;
+  setStatus('正在生成报告用于预览…', 'work', 0);
+  paint();
+
+  try {
+    const tplRec = await getTemplate();
+    if (!tplRec || !tplRec.data) throw new Error('本地模板已丢失，请重新加载模板');
+
+    const res = await generateReport({
+      templateBlob: tplRec.data,
+      headers: state.tpl.headers || [],
+      rows: state.objRows,
+      product: state.product
+        ? { skuList: state.product.skuList, nameMap: state.product.nameMap }
+        : null,
+      onProgress: ({ pct, text }) => setStatus(text, 'work', pct),
+    });
+
+    setStatus('正在解析各 Sheet 用于预览…', 'work', 96);
+    await new Promise((r) => setTimeout(r, 30));
+
+    const wb = window.XLSX.read(new Uint8Array(res.data), { type: 'array' });
+    const fileName = defaultReportName(state.tpl.name);
+
+    state.busy = false;
+    setStatus(`预览已就绪：${fileName} · ${fmtInt(res.rowCount)} 行数据，可切换各 Sheet 查看`, 'ok', 100);
+    paint();
+    openReportPreview(wb, fileName, res);
+  } catch (err) {
+    state.busy = false;
+    setStatus(`预览失败：${err.message}`, 'err', 0);
+    paint();
+    toastError(`预览失败：${err.message || '未知错误'}`);
+  }
+}
+
+/** 报告预览弹窗：Tab 切换 6 个 Sheet，底部保留下载 */
+export function openReportPreview(wb, fileName, res) {
+  const names = wb.SheetNames;
+  const tabs = names
+    .map((n, i) => `<button class="rp-tab ${i === 0 ? 'on' : ''}" data-rp-tab="${esc(n)}">${esc(n)}</button>`)
+    .join('');
+  const panels = names
+    .map(
+      (n, i) =>
+        `<div class="rp-panel" data-rp-panel="${esc(n)}" ${i === 0 ? '' : 'hidden'}>${previewSheetHTML(wb, n)}</div>`
+    )
+    .join('');
+
+  const body = `
+    <div class="rp">
+      <div class="rp-tabs">${tabs}</div>
+      ${panels}
+      <div class="rp-tip">${icon('info')} 数据透视表 / 图表 / 产品图片由 Excel 打开时自动重算显示，预览仅展示各 Sheet 的数据内容；确认无误后可下载完整报告。</div>
+    </div>`;
+
+  const m = openModal({
+    title: `报告预览 · ${esc(fileName)}`,
+    body,
+    width: 'wide',
+    footer: `
+      <button class="btn btn-ghost" data-close>关闭</button>
+      <button class="btn btn-primary" data-dl>${icon('download')} 下载完整报告</button>`,
+  });
+
+  m.el.querySelector('[data-close]').onclick = m.close;
+  m.el.querySelector('[data-dl]').onclick = () => {
+    downloadBlob(toXlsxBlob(res.data), fileName);
+    toastSuccess('开始下载完整报告');
+  };
+
+  // Tab 切换
+  m.el.querySelectorAll('[data-rp-tab]').forEach((tab) => {
+    tab.addEventListener('click', () => {
+      m.el.querySelectorAll('[data-rp-tab]').forEach((t) => t.classList.remove('on'));
+      tab.classList.add('on');
+      m.el.querySelectorAll('[data-rp-panel]').forEach((p) => {
+        p.hidden = p.dataset.rpPanel !== tab.dataset.rpTab;
+      });
+    });
+  });
+}
+
+/** 单个 Sheet 的表格预览（表头 + 前 100 行） */
+export function previewSheetHTML(wb, name) {
+  const ws = wb.Sheets[name];
+  const rows = window.XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+  const safe = (v) => (v == null ? '' : String(v));
+
+  if (!rows.length) {
+    return `
+      <div class="empty-state rp-empty">
+        <div class="empty-icon">${icon('sheet')}</div>
+        <div class="empty-title">该 Sheet 没有预存数据</div>
+        <div class="empty-sub">数据透视表 / 图表区域在下载后由 Excel 自动重算，预览中不显示。</div>
+      </div>`;
+  }
+
+  const head = rows[0] || [];
+  const preview = rows.slice(0, PREVIEW_MAX_ROWS + 1);
+  const bodyRows = preview
+    .slice(1)
+    .map((r, i) => `<tr><td class="num rp-idx">${i + 1}</td>${head.map((_, ci) => `<td>${esc(safe(r[ci]))}</td>`).join('')}</tr>`)
+    .join('');
+  const headRow = `<tr><th class="rp-idx">#</th>${head.map((h) => `<th>${esc(safe(h))}</th>`).join('')}</tr>`;
+  const truncated = rows.length > PREVIEW_MAX_ROWS + 1;
+
+  return `
+    <div class="table-scroll rp-table">
+      <table class="data-table an-table-tight">
+        <thead>${headRow}</thead>
+        <tbody>${bodyRows}</tbody>
+      </table>
+    </div>
+    <div class="rp-count">共 ${fmtInt(Math.max(0, rows.length - 1))} 行数据${truncated ? `，此处预览前 ${PREVIEW_MAX_ROWS} 行` : ''}，下载后可查看全部。</div>`;
 }
 
 /** 下载历史报告 */

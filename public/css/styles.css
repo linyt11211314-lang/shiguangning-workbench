@@ -2385,3 +2385,37 @@ html, body {
   box-shadow: 0 2px 8px rgba(255,82,119,0.28);
 }
 .ship-section.is-hidden { display: none; }
+
+/* ============ 报告预览（数据分析页） ============ */
+.rp-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+.rp-tab {
+  padding: 6px 14px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg);
+  color: var(--text-sub);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.rp-tab:hover { border-color: var(--primary); color: var(--primary-deep); }
+.rp-tab.on { background: var(--primary); border-color: var(--primary); color: var(--text-deep, #22322a); font-weight: 600; }
+.rp-panel[hidden] { display: none; }
+.rp-table { max-height: 56vh; }
+.rp-idx { color: var(--text-faint, var(--text-sub)); width: 44px; text-align: center; }
+.rp-count { margin-top: 8px; font-size: 12px; color: var(--text-sub); }
+.rp-tip {
+  margin-top: 12px;
+  padding: 8px 12px;
+  background: var(--bg);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-md);
+  font-size: 12px;
+  color: var(--text-sub);
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  line-height: 1.6;
+}
+.rp-empty { padding: 32px 0; }
+

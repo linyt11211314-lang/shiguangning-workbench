@@ -204,7 +204,13 @@ export function buildRows(tplHeaders, rows, map) {
       o[h] = v;
       if (v !== '') empty = false;
     }
-    if (!empty && String(o[SKU_HEADER] ?? '') !== '') out.push(o);
+    if (empty) continue;
+    // 按中英文逗号/分号/顿号/空白拆分多 SKU 单元格（领星导出偶发 "A,B" 合并行）
+    const parts = splitMultiSku(o[SKU_HEADER]);
+    if (!parts.length) continue;
+    for (const part of parts) {
+      out.push({ ...o, [SKU_HEADER]: part });
+    }
   }
   return out;
 }
@@ -218,6 +224,28 @@ function num(v) {
   if (v === '' || v == null) return 0;
   const n = Number(String(v).replace(/[,%¥$￥\s]/g, ''));
   return isFinite(n) ? n : 0;
+}
+
+/**
+ * 拆分一个单元格内多个 SKU：领星导出偶尔把「同店铺同型号的两个变体」合并到 A 列写成
+ * "DL251023,DL251023-1"。按中英文逗号/分号/顿号/空白拆分后逐个 trim + 去重 + 去空。
+ * @param {string} raw 单元格原始值
+ * @returns {string[]} 至少 1 个元素，原值不变则返回 [raw]
+ */
+export function splitMultiSku(raw) {
+  const s = String(raw ?? '').trim();
+  if (!s) return [];
+  const parts = s.split(/[,，;；、\s]+/g).map((x) => x.trim()).filter(Boolean);
+  // 全分隔符（如 ",,,"）自然得到 []，不兜底返回 [raw]，让调用方按空 SKU 剔除。
+  // 去重（保留首次出现的）
+  const seen = new Set();
+  const out = [];
+  for (const p of parts) {
+    if (seen.has(p)) continue;
+    seen.add(p);
+    out.push(p);
+  }
+  return out;
 }
 
 /**

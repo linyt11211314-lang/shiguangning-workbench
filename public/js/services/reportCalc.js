@@ -173,6 +173,9 @@ export function computeOverview(prepped, allowedSkuSet = null) {
 
   return {
     kpis: { B4: skus.size, B5: totalQty, B6: qty30, B7: totalProfit, B8: margin },
+    // B4（有效SKU）改成公式：用户下载后在 WPS/Excel 里增删产品表现行的行，B4 会自动跟着变。
+    // 其他 B5-B8 维持硬数字（聚合指标需在领星源加辅助列才能联动，超出本轮范围）
+    formulas: { B4: '=COUNTA(产品表现!A3:A1000)' },
     monthly,
     profitState: { pos, neg },
     summary,

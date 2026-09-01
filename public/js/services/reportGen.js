@@ -92,6 +92,10 @@ export function patchCell(sheetXml, ref, value) {
     const a = String(attrs).replace(/\s*t="[^"]*"/g, '');
     if (value === '' || value == null) return `<c r="${ref}"${a}/>`;
     if (typeof value === 'number') return `<c r="${ref}"${a}><v>${value}</v></c>`;
+    if (typeof value === 'string' && value.startsWith('=')) {
+      // 公式：保留 <f>，v 占位 0 由 Excel/WPS 打开时 fullCalcOnLoad 自动重算
+      return `<c r="${ref}"${a}><f>${xmlEsc(value.slice(1))}</f><v>0</v></c>`;
+    }
     return `<c r="${ref}"${a} t="inlineStr"><is><t xml:space="preserve">${xmlEsc(value)}</t></is></c>`;
   });
   return { xml, ok: true };
@@ -501,7 +505,13 @@ export async function generateReport({ templateBlob, headers, rows, product: pro
 
     if (ovPath && zip.file(ovPath)) {
       let s3 = await zip.file(ovPath).async('string');
-      for (const [ref, v] of Object.entries(ov.kpis)) s3 = patchCell(s3, ref, v).xml;
+      // 先写公式（KPI 里被映射成 Excel 公式的项，如 B4=COUNTA(产品表现!A3:A1000)）
+      for (const [ref, formula] of Object.entries(ov.formulas || {})) s3 = patchCell(s3, ref, formula).xml;
+      // 再写硬数字 KPI，但跳过已被公式覆盖的 ref（避免数字覆盖公式）
+      for (const [ref, v] of Object.entries(ov.kpis)) {
+        if (ov.formulas && ref in ov.formulas) continue;
+        s3 = patchCell(s3, ref, v).xml;
+      }
       for (let i = 0; i < MONTHLY_ROWS; i++) {
         const row = 5 + i;
         const m = ov.monthly[i];

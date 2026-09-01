@@ -177,7 +177,7 @@ function rangeRefs(from, to, col) {
  *   D~P=复制模板第 3 行公式并把本表相对行号替换为新行号（P 列共享公式展开为独立公式）
  * @returns {Promise<{ endRow: number }>} endRow = 最后一行行号
  */
-export async function rebuildProductSheet(zip, path, product) {
+export async function rebuildProductSheet(zip, path, product, lookupEnd) {
   let s2 = await zip.file(path).async('string');
   const row1 = s2.match(/<row r="1"[^>]*>[\s\S]*?<\/row>/);
   const row2 = s2.match(/<row r="2"[^>]*>[\s\S]*?<\/row>/);
@@ -196,9 +196,26 @@ export async function rebuildProductSheet(zip, path, product) {
     colDefs[L] = { style: sM ? sM[1] : null, formula: fM ? fM[1] : null };
   }
 
-  // 公式行号替换：$A3 → $A{r}、O3 → O{r}（绝对引用 $A$1 / $V$8601 不受影响）
-  const relink = (formula, r) =>
-    String(formula).replace(/\$?[A-P](\d+)/g, (m, d) => m.slice(0, -d.length) + r);
+  // 公式行号替换：
+  //   本表引用 $A3 / O3 / $A$3 → 行号 = r（当前产品表现行，列范围仅限 [A-P]，产品表现只有 A~P 列）
+  //   外部 sheet 引用 sheet!$A$1:$V$8601 → 范围末行 = lookupEnd（领星数据源总行数），保持 sheet 名前缀
+  //   旧版只覆盖 [A-P] 单字符列 → 模板实际列范围是 V（22）整段根本不命中，所以外部尾行号从不同步
+  const relink = (formula, r, lookupEnd) => {
+    if (!formula) return '';
+    let f = String(formula);
+    if (lookupEnd != null) {
+      // 外部 sheet 整段范围 sheet!$A$1:$V$8601 → sheet!$A$1:$V$lookupEnd（只改末行，起始行保持）
+      //   注意：必须按整段范围匹配，不能再用单点 sheet!$X$N 兜底——否则会把上面已经替换好的起始行 $A$1
+      //   又改写成 $A$lookupEnd，导致整段范围两端都被改。
+      f = f.replace(
+        new RegExp(`([\\u4e00-\\u9fff\\w]+!)\\$([A-Z]+)\\$(\\d+):\\$([A-Z]+)\\$(\\d+)`, 'g'),
+        (m, sh, c1, r1, c2, r2) => `${sh}$${c1}$${r1}:$${c2}$${lookupEnd}`
+      );
+    }
+    // 本表引用 $A3 / O3 / $A$3 → 行号 = r，列锁 $ 前缀原样保留
+    f = f.replace(/(\$?)([A-P])(\d+)/g, (m, dollar, col, rn) => `${dollar}${col}${r}`);
+    return f;
+  };
 
   const skuList = (product && product.skuList) || [];
   const nameMap = (product && product.nameMap) || {};
@@ -214,7 +231,7 @@ export async function rebuildProductSheet(zip, path, product) {
     for (const L of ['D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P']) {
       const d = colDefs[L];
       const st = d && d.style ? ` s="${d.style}"` : '';
-      if (d && d.formula) cells += `<c r="${L}${r}"${st}><f>${relink(d.formula, r)}</f></c>`;
+      if (d && d.formula) cells += `<c r="${L}${r}"${st}><f>${relink(d.formula, r, lookupEnd)}</f></c>`;
       else cells += `<c r="${L}${r}"${st}/>`;
     }
     rows.push(`<row r="${r}"${rowAttrs}>${cells}</row>`);
@@ -445,7 +462,7 @@ export async function generateReport({ templateBlob, headers, rows, product: pro
     if (perfPath && zip.file(perfPath)) {
       try {
         say(71, `正在按上传清单重建产品表现（${product.skuList.length} 个 SKU）…`);
-        const r = await rebuildProductSheet(zip, perfPath, product);
+        const r = await rebuildProductSheet(zip, perfPath, product, lookupEnd);
         perfEnd = r.endRow;
         productUsed = true;
         // 同步透视缓存源（产品表现!A2:P{旧} → 新行数）；definedNames 统一在下方 wbMod 阶段处理

@@ -273,6 +273,13 @@ export async function rebuildProductSheet(zip, path, product, lookupEnd) {
     colDefs[L] = { style: sM ? sM[1] : null, formula: fM ? fM[1] : null };
   }
 
+  // 修正 I 列 VLOOKUP 第4参数 3(近似匹配)→FALSE(精确匹配)。原公式形如
+  // VLOOKUP($A3,领星数据源!$A:$AY$39109,3,3,FALSE) —— 第4参数写成 3 会被 Excel 当作 TRUE(近似)，
+  // 导致个别 SKU 在升序不严格的列上取到错误行、归错月份，与概况口径错位。改为精确匹配，与概况一致。
+  if (colDefs.I && colDefs.I.formula) {
+    colDefs.I.formula = colDefs.I.formula.replace(/,\s*3\s*,\s*3\s*,\s*FALSE\b/, ',3,FALSE');
+  }
+
   // 公式行号替换：
   //   本表引用 $A3 / O3 / $A$3 → 行号 = r（当前产品表现行，列范围仅限 [A-P]，产品表现只有 A~P 列）
   //   外部 sheet 引用 sheet!$A$1:$V$8601 → 范围末行 = lookupEnd（领星数据源总行数），保持 sheet 名前缀
@@ -563,6 +570,12 @@ export async function generateReport({ templateBlob, headers, rows, product: pro
   try {
     const shared = await parseSharedStrings(zip);
     const perfPath = sheetPath('产品表现');
+    // 修正产品表现 I 列 VLOOKUP 第4参数 3(近似)→FALSE(精确)：让 Excel 端产品表现与概况口径一致（幂等，重建路径已处理）
+    if (perfPath && zip.file(perfPath)) {
+      const ps = await zip.file(perfPath).async('string');
+      const fixedPs = ps.replace(/,\s*3\s*,\s*3\s*,\s*FALSE/g, ',3,FALSE');
+      if (fixedPs !== ps) zip.file(perfPath, fixedPs);
+    }
     const ovPath = sheetPath('概况');
     const casePath = sheetPath('案例分析');
     const catPath = sheetPath('全店铺全SKU类目汇总');
@@ -573,7 +586,17 @@ export async function generateReport({ templateBlob, headers, rows, product: pro
     const skuNameMap = product ? { ...tpl.map, ...product.nameMap } : tpl.map;
 
     const prepped = prepRows(rows);
-    const ov = computeOverview(prepped, allowedSkuSet);
+
+    // 概况严格按产品表现 sheet 口径：每个产品 SKU 在领星数据源精确匹配首次出现行的「创建时间」(C列=I列VLOOKUP第3列)，
+    // 用 JS 端复刻 VLOOKUP(...,FALSE) 的精确匹配语义，保证概况月度表与产品表现 I 列完全一致。
+    const launchYmMap = new Map();
+    for (const sku of allowedSkuSet) {
+      for (const r of prepped) {
+        if (r.sku === sku && r.ym) { launchYmMap.set(sku, r.ym); break; }
+      }
+    }
+
+    const ov = computeOverview(prepped, allowedSkuSet, launchYmMap);
     const cases = computeCases(prepped, skuNameMap, allowedSkuSet);
 
     if (ovPath && zip.file(ovPath)) {

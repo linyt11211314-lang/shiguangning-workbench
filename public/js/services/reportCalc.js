@@ -99,7 +99,7 @@ export const MONTHLY_ROWS = 9;
  *   summary: [string, string, string]
  * }}
  */
-export function computeOverview(prepped, allowedSkuSet = null) {
+export function computeOverview(prepped, allowedSkuSet = null, launchYmMap = null) {
   // 按产品表现 sheet 口径：每个 SKU 的「上架月份」= 它在领星源里**首次出现**的行的 ym
   // （与产品表现 I 列 VLOOKUP 领星源的「首次匹配行」完全一致；prepped 已按源表行顺序保留，
   //  故自上而下第一个命中即等于 VLOOKUP 首次匹配）。
@@ -120,6 +120,10 @@ export function computeOverview(prepped, allowedSkuSet = null) {
       if (r.sku === sku && r.ym) { skuYms.set(sku, r.ym); break; }
     }
   }
+
+  // 调用方可传入「产品表现 I 列口径」的 SKU→上架月份映射（JS 端精确复刻 VLOOKUP 第3列=创建时间），
+  // 让概况月度表 100% 对齐产品表现 sheet。传入则忽略内部 skuYms 计算。
+  const ymMap = launchYmMap && launchYmMap instanceof Map && launchYmMap.size ? launchYmMap : skuYms;
 
   const rows = allowedSkuSet ? prepped.filter((r) => allowedSkuSet.has(r.sku)) : prepped;
 
@@ -147,7 +151,7 @@ export function computeOverview(prepped, allowedSkuSet = null) {
 
     // 上传产品清单时：把该 SKU 的所有销售数据归属到它的「上架月份」（cohort）
     // 未上传时：按销售月份（保留原行为）
-    const cohortYm = allowedSkuSet ? skuYms.get(r.sku) : r.ym;
+    const cohortYm = allowedSkuSet ? ymMap.get(r.sku) : r.ym;
     if (cohortYm) {
       let m = monthlyMap.get(cohortYm);
       if (!m) {
@@ -173,7 +177,7 @@ export function computeOverview(prepped, allowedSkuSet = null) {
     for (const k of monthlyMap.keys()) if (k > fallbackYm) fallbackYm = k;
 
     for (const sku of allowedSkuSet) {
-      let ym = skuYms.get(sku);
+      let ym = ymMap.get(sku);
       if (!ym) ym = fallbackYm;
       if (!ym) continue; // 兜底月份也不存在（极端）才真正跳过
       let m = monthlyMap.get(ym);

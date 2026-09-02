@@ -168,9 +168,11 @@ export function computeOverview(prepped, allowedSkuSet = null) {
     }
   }
 
+  // 返回「全部」上架月份（按产品表现 sheet 口径），不再截断。
+  // 模板月度表固定 9 行；当 distinct 上架月份 > 9 时，reportGen 会在概况 sheet 动态插入行容纳，
+  // 保证最旧的上架月份（如 2025-10）也不会被静默丢弃——整张概况都按产品表现 sheet 来。
   const monthly = [...monthlyMap.entries()]
     .sort((a, b) => (a[0] < b[0] ? -1 : 1))
-    .slice(-MONTHLY_ROWS)
     .map(([ym, m]) => ({
       ym,
       skuCount: m.skuSet.size,

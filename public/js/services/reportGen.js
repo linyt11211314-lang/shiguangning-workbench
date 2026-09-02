@@ -101,6 +101,79 @@ export function patchCell(sheetXml, ref, value) {
   return { xml, ok: true };
 }
 
+/**
+ * 在 afterRow 行之后插入 count 个空行（克隆 afterRow 行的 D~M 单元格样式、清空值），
+ * 并把 afterRow 以下的所有行号与单元格引用整体下移 count（同步 mergedCell / dimension）。
+ * 用于概况月度表超过模板 9 行容量时动态扩容，保证最旧的上架月份（如 2025-10）不被静默丢弃。
+ */
+export function insertSheetRows(sheetXml, afterRow, count) {
+  if (!count || count <= 0) return sheetXml;
+  const after = Number(afterRow);
+  const rowOf = (ref) => Number(String(ref).match(/\d+/)[0]);
+  const colOf = (ref) => String(ref).match(/[A-Z]+/)[0];
+  // 1) afterRow 以下行号与单元格引用整体 +count（先平移，避免与新插入行号冲突）
+  sheetXml = sheetXml.replace(/<row\b([^>]*?)\br="(\d+)"([^>]*)>/g, (m, pre, r, post) => {
+    const R = Number(r);
+    return R > after ? `<row${pre}r="${R + count}"${post}>` : m;
+  });
+  sheetXml = sheetXml.replace(/<c\b([^>]*?)\br="([A-Z]+)(\d+)"([^>]*)>/g, (m, pre, col, r, post) => {
+    const R = Number(r);
+    return R > after ? `<c${pre}r="${col}${R + count}"${post}>` : m;
+  });
+  sheetXml = sheetXml.replace(/<mergeCell\b([^>]*?)\bref="([A-Z]+\d+):([A-Z]+\d+)"/g, (m, pre, a, b) => {
+    const ra = rowOf(a), rb = rowOf(b);
+    if (ra > after || rb > after) return `<mergeCell${pre}ref="${colOf(a)}${ra + count}:${colOf(b)}${rb + count}"`;
+    return m;
+  });
+  // 2) 克隆 afterRow 行生成新行（保留样式、清空值）
+  const lastRowM = sheetXml.match(new RegExp(`(<row\\b[^>]*?\\br="${after}"[^>]*>)([^]*?)<\\/row>`));
+  let newRowsXml = '';
+  if (lastRowM) {
+    const openTag = lastRowM[1].replace(`r="${after}"`, 'TMPROW');
+    for (let k = 1; k <= count; k++) {
+      const r = after + k;
+      const rowInner = lastRowM[2]
+        .replace(/<v>[\s\S]*?<\/v>/g, '')
+        .replace(/<is>[\s\S]*?<\/is>/g, '')
+        .replace(/<f>[\s\S]*?<\/f>/g, '')
+        .replace(/\s+t="[^"]*"/g, '')
+        .replace(new RegExp(`r="([A-Z]+)${after}"`, 'g'), `r="$1${r}"`);
+      newRowsXml += `${openTag.replace('TMPROW', `r="${r}"`)}${rowInner}</row>`;
+    }
+  } else {
+    const cols = ['D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M'];
+    for (let k = 1; k <= count; k++) {
+      const r = after + k;
+      newRowsXml += `<row r="${r}">${cols.map((c) => `<c r="${c}${r}"/>`).join('')}</row>`;
+    }
+  }
+  // 3) 新行插入到 afterRow 行之后
+  sheetXml = sheetXml.replace(new RegExp(`(<row\\b[^>]*?\\br="${after}"[^>]*>[^]*?<\\/row>)`), `$1${newRowsXml}`);
+  // 4) 更新 dimension 末行
+  sheetXml = sheetXml.replace(/<dimension\b([^>]*?)\bref="([A-Z]+)1:([A-Z]+)(\d+)"/g, (m, pre, c1, c2, end) => {
+    const newEnd = Math.max(Number(end), 24 + count);
+    return `<dimension${pre}ref="${c1}1:${c2}${newEnd}"`;
+  });
+  return sheetXml;
+}
+
+/** 同步概况月度趋势图引用：概况!$D$5:$M$<旧末行> / 概况!$D$5:$D$<旧末行> → 新末行 */
+export async function syncChartMonthlyRange(zip, sheetName, oldEnd, newEnd) {
+  if (oldEnd === newEnd) return;
+  const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const files = Object.keys(zip.files).filter((n) => /^xl\/charts\/chart\d*\.xml$/.test(n));
+  // sheet 名兼容带/不带单引号两种写法（'概况'! 或 概况!）
+  const sheetPart = `(?:'?)${esc(sheetName)}(?:'?)!`;
+  const reM = new RegExp(`(${sheetPart}\\$D\\$5:\\$M\\$)${oldEnd}\\b`, 'g');
+  const reD = new RegExp(`(${sheetPart}\\$D\\$5:\\$D\\$)${oldEnd}\\b`, 'g');
+  for (const f of files) {
+    let x = await zip.file(f).async('string');
+    const before = x;
+    x = x.replace(reM, `$1${newEnd}`).replace(reD, `$1${newEnd}`);
+    if (x !== before) zip.file(f, x);
+  }
+}
+
 /** 解析共享字符串表（兼容富文本多 <t>） */
 export async function parseSharedStrings(zip) {
   const f = zip.file('xl/sharedStrings.xml');
@@ -505,6 +578,11 @@ export async function generateReport({ templateBlob, headers, rows, product: pro
 
     if (ovPath && zip.file(ovPath)) {
       let s3 = await zip.file(ovPath).async('string');
+      const monthCount = ov.monthly.length;
+      const shift = Math.max(0, monthCount - MONTHLY_ROWS);
+      // 上架月份超过模板 9 行容量 → 在月度表（第 13 行）后插入行，平移下方 profitState/总结/图表，
+      // 保证最旧的上架月份（如 2025-10）也显示在概况里——整张概况都按产品表现 sheet 来。
+      if (shift > 0) s3 = insertSheetRows(s3, 4 + MONTHLY_ROWS, shift);
       // 先写公式（KPI 里被映射成 Excel 公式的项，如 B4=COUNTA(产品表现!A3:A1000)）
       for (const [ref, formula] of Object.entries(ov.formulas || {})) s3 = patchCell(s3, ref, formula).xml;
       // 再写硬数字 KPI，但跳过已被公式覆盖的 ref（避免数字覆盖公式）
@@ -512,7 +590,8 @@ export async function generateReport({ templateBlob, headers, rows, product: pro
         if (ov.formulas && ref in ov.formulas) continue;
         s3 = patchCell(s3, ref, v).xml;
       }
-      for (let i = 0; i < MONTHLY_ROWS; i++) {
+      // 写入「全部」上架月份（不再截断）：行 5..(5+monthCount-1)
+      for (let i = 0; i < monthCount; i++) {
         const row = 5 + i;
         const m = ov.monthly[i];
         if (m) {
@@ -530,12 +609,14 @@ export async function generateReport({ templateBlob, headers, rows, product: pro
           for (const L of ['D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M']) s3 = patchCell(s3, `${L}${row}`, '').xml;
         }
       }
-      s3 = patchCell(s3, 'E15', ov.profitState.pos).xml;
-      s3 = patchCell(s3, 'E16', ov.profitState.neg).xml;
-      s3 = patchCell(s3, 'E22', ov.summary[0]).xml;
-      s3 = patchCell(s3, 'E23', ov.summary[1]).xml;
-      s3 = patchCell(s3, 'E24', ov.summary[2]).xml;
+      s3 = patchCell(s3, `E${15 + shift}`, ov.profitState.pos).xml;
+      s3 = patchCell(s3, `E${16 + shift}`, ov.profitState.neg).xml;
+      s3 = patchCell(s3, `E${22 + shift}`, ov.summary[0]).xml;
+      s3 = patchCell(s3, `E${23 + shift}`, ov.summary[1]).xml;
+      s3 = patchCell(s3, `E${24 + shift}`, ov.summary[2]).xml;
       zip.file(ovPath, s3);
+      // 同步引用月度表的图表（末行 13 → 13+shift）
+      if (shift > 0) await syncChartMonthlyRange(zip, '概况', 4 + MONTHLY_ROWS, 4 + MONTHLY_ROWS + shift);
       patched.overview = true;
     }
 

@@ -254,7 +254,7 @@ function rangeRefs(from, to, col) {
  *   D~P=复制模板第 3 行公式并把本表相对行号替换为新行号（P 列共享公式展开为独立公式）
  * @returns {Promise<{ endRow: number }>} endRow = 最后一行行号
  */
-export async function rebuildProductSheet(zip, path, product, lookupEnd, launchYmMap) {
+export async function rebuildProductSheet(zip, path, product, lookupEnd) {
   let s2 = await zip.file(path).async('string');
   const row1 = s2.match(/<row r="1"[^>]*>[\s\S]*?<\/row>/);
   const row2 = s2.match(/<row r="2"[^>]*>[\s\S]*?<\/row>/);
@@ -315,15 +315,6 @@ export async function rebuildProductSheet(zip, path, product, lookupEnd, launchY
     for (const L of ['D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P']) {
       const d = colDefs[L];
       const st = d && d.style ? ` s="${d.style}"` : '';
-      // I 列「上架时间」：直接写 launchYmMap 值（与概况同源），不再依赖 VLOOKUP 近似匹配/Excel 未重算。
-      // 这样整张概况 sheet 按产品表现 sheet 来时，两者上架月份 100% 一致。
-      if (L === 'I' && launchYmMap) {
-        const v = launchYmMap.get(sku) || '';
-        cells += v
-          ? `<c r="I${r}"${st} t="inlineStr"><is><t xml:space="preserve">${xmlEsc(v)}</t></is></c>`
-          : `<c r="I${r}"${st}/>`;
-        continue;
-      }
       if (d && d.formula) cells += `<c r="${L}${r}"${st}><f>${relink(d.formula, r, lookupEnd)}</f></c>`;
       else cells += `<c r="${L}${r}"${st}/>`;
     }
@@ -343,24 +334,6 @@ export async function rebuildProductSheet(zip, path, product, lookupEnd, launchY
   }
   zip.file(path, s2);
   return { endRow };
-}
-
-/**
- * 把产品表现 sheet 的 I 列「上架时间」按 launchYmMap 写成值（与概况同源）。
- * @param {string} sheetXml 产品表现 sheet XML
- * @param {Map<string,string>} launchYmMap SKU -> 上架月份(YYYY-MM)
- * @param {string[]} skuList 行顺序的产品 SKU 清单（skuList[i] 对应第 i+3 行）
- * @returns {string}
- */
-export function patchProductLaunchMonths(sheetXml, launchYmMap, skuList) {
-  let s = sheetXml;
-  for (let i = 0; i < skuList.length; i++) {
-    const r = i + 3;
-    const sku = String(skuList[i] || '').trim();
-    const v = (launchYmMap && launchYmMap.get(sku)) || '';
-    s = patchCell(s, `I${r}`, v).xml;
-  }
-  return s;
 }
 
 /** 打 5 行案例块补丁（A~H），空行清空 */
@@ -573,7 +546,7 @@ export async function generateReport({ templateBlob, headers, rows, product: pro
     if (perfPath && zip.file(perfPath)) {
       try {
         say(71, `正在按上传清单重建产品表现（${product.skuList.length} 个 SKU）…`);
-        const r = await rebuildProductSheet(zip, perfPath, product, lookupEnd, launchYmMap);
+        const r = await rebuildProductSheet(zip, perfPath, product, lookupEnd);
         perfEnd = r.endRow;
         productUsed = true;
         // 同步透视缓存源（产品表现!A2:P{旧} → 新行数）；definedNames 统一在下方 wbMod 阶段处理
@@ -597,17 +570,10 @@ export async function generateReport({ templateBlob, headers, rows, product: pro
   try {
     const shared = await parseSharedStrings(zip);
     const perfPath = sheetPath('产品表现');
-    // 产品表现 I 列「上架时间」：直接写 launchYmMap 值（与概况同源），彻底消除 VLOOKUP 近似匹配 /
-    // Excel 未重算导致的口径错位——整张概况都按产品表现 sheet 来，且两者 100% 一致。
-    const skuList = [...allowedSkuSet];
+    // 修正产品表现 I 列 VLOOKUP 第4参数 3(近似)→FALSE(精确)：让 Excel 端产品表现与概况口径一致（幂等，重建路径已处理）
     if (perfPath && zip.file(perfPath)) {
       const ps = await zip.file(perfPath).async('string');
-      let fixedPs = ps;
-      if (launchYmMap && launchYmMap.size) {
-        fixedPs = patchProductLaunchMonths(fixedPs, launchYmMap, skuList);
-      }
-      // 兜底：把残留的 VLOOKUP 第4参数 3(近似) 修正为 FALSE(精确)
-      fixedPs = fixedPs.replace(/,\s*3\s*,\s*3\s*,\s*FALSE/g, ',3,FALSE');
+      const fixedPs = ps.replace(/,\s*3\s*,\s*3\s*,\s*FALSE/g, ',3,FALSE');
       if (fixedPs !== ps) zip.file(perfPath, fixedPs);
     }
     const ovPath = sheetPath('概况');

@@ -100,13 +100,15 @@ export const MONTHLY_ROWS = 9;
  * }}
  */
 export function computeOverview(prepped, allowedSkuSet = null) {
-  // 按产品表现 cohort 视角：每个 SKU 的「上架月份」= 它在领星源里出现过的最早 ym
-  // 之后所有指标（销量/毛利润/广告费/退款）都归属到该 SKU 的上架月份，而不是销售月份
+  // 按产品表现 sheet 口径：每个 SKU 的「上架月份」= 它在领星源里**首次出现**的行的 ym
+  // （与产品表现 I 列 VLOOKUP 领星源的「首次匹配行」完全一致；prepped 已按源表行顺序保留，
+  //  故自上而下第一个命中即等于 VLOOKUP 首次匹配）。
+  // 注意：不能取 min（最早 ym）——领星源同 SKU 多行乱序时，min 会把 SKU 归到错误的上架月份，
+  // 导致概况月度表 D3:L13 与产品表现 sheet 对不上。
   const skuYms = new Map();
   for (const r of prepped) {
     if (!r.sku || !r.ym) continue;
-    const prev = skuYms.get(r.sku);
-    if (!prev || r.ym < prev) skuYms.set(r.sku, r.ym);
+    if (!skuYms.has(r.sku)) skuYms.set(r.sku, r.ym); // 保留源表自上而下第一个出现的 ym
   }
 
   const rows = allowedSkuSet ? prepped.filter((r) => allowedSkuSet.has(r.sku)) : prepped;
@@ -205,6 +207,7 @@ export function computeOverview(prepped, allowedSkuSet = null) {
   ];
 
   return {
+    // 备注：B4 真正写入的是 formulas.B4 公式（=COUNTA(产品表现!A3:A1000)），这里的数字只是占位。
     kpis: { B4: skus.size, B5: totalQty, B6: qty30, B7: totalProfit, B8: margin },
     // B4（有效SKU）改成公式：用户下载后在 WPS/Excel 里增删产品表现行的行，B4 会自动跟着变。
     // 其他 B5-B8 维持硬数字（聚合指标需在领星源加辅助列才能联动，超出本轮范围）

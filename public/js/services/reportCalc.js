@@ -100,8 +100,21 @@ export const MONTHLY_ROWS = 9;
  * }}
  */
 export function computeOverview(prepped, allowedSkuSet = null) {
+  // 按产品表现 cohort 视角：每个 SKU 的「上架月份」= 它在领星源里出现过的最早 ym
+  // 之后所有指标（销量/毛利润/广告费/退款）都归属到该 SKU 的上架月份，而不是销售月份
+  const skuYms = new Map();
+  for (const r of prepped) {
+    if (!r.sku || !r.ym) continue;
+    const prev = skuYms.get(r.sku);
+    if (!prev || r.ym < prev) skuYms.set(r.sku, r.ym);
+  }
+
   const rows = allowedSkuSet ? prepped.filter((r) => allowedSkuSet.has(r.sku)) : prepped;
+
+  // SKU 总数：上传产品清单时 = 产品表现 SKU 数（与 B4 公式对齐）；否则 = 领星源 prepped 中 distinct SKU 数
   const skus = new Set();
+  if (allowedSkuSet) for (const s of allowedSkuSet) skus.add(s);
+
   let totalQty = 0;
   let qty30 = 0;
   let totalProfit = 0;
@@ -109,10 +122,10 @@ export function computeOverview(prepped, allowedSkuSet = null) {
   let outOfStockRows = 0;
 
   const bySkuProfit = new Map(); // sku -> 毛利润合计
-  const monthlyMap = new Map(); // ym -> { skuSet, qty, qty30, sales, profit, refundQty, adSpend }
+  const monthlyMap = new Map(); // cohort ym -> { skuSet, qty, qty30, sales, profit, refundQty, adSpend }
 
   for (const r of rows) {
-    if (r.sku) skus.add(r.sku);
+    if (!allowedSkuSet && r.sku) skus.add(r.sku);
     totalQty += r.qty;
     qty30 += r.qty30;
     totalProfit += r.profit;
@@ -120,11 +133,14 @@ export function computeOverview(prepped, allowedSkuSet = null) {
     if (r.outOfStock) outOfStockRows += 1;
     bySkuProfit.set(r.sku, (bySkuProfit.get(r.sku) || 0) + r.profit);
 
-    if (r.ym) {
-      let m = monthlyMap.get(r.ym);
+    // 上传产品清单时：把该 SKU 的所有销售数据归属到它的「上架月份」（cohort）
+    // 未上传时：按销售月份（保留原行为）
+    const cohortYm = allowedSkuSet ? skuYms.get(r.sku) : r.ym;
+    if (cohortYm) {
+      let m = monthlyMap.get(cohortYm);
       if (!m) {
         m = { skuSet: new Set(), qty: 0, qty30: 0, sales: 0, profit: 0, refundQty: 0, adSpend: 0 };
-        monthlyMap.set(r.ym, m);
+        monthlyMap.set(cohortYm, m);
       }
       m.skuSet.add(r.sku);
       m.qty += r.qty;
@@ -133,6 +149,20 @@ export function computeOverview(prepped, allowedSkuSet = null) {
       m.profit += r.profit;
       m.refundQty += r.refundQty;
       m.adSpend += r.adSpend;
+    }
+  }
+
+  // 补全：产品 SKU 有上架月份但 0 销售行的，也计入对应月份 SKU 数（保证月度 SKU 数 = 产品表现 SKU 数）
+  if (allowedSkuSet) {
+    for (const sku of allowedSkuSet) {
+      const ym = skuYms.get(sku);
+      if (!ym) continue;
+      let m = monthlyMap.get(ym);
+      if (!m) {
+        m = { skuSet: new Set(), qty: 0, qty30: 0, sales: 0, profit: 0, refundQty: 0, adSpend: 0 };
+        monthlyMap.set(ym, m);
+      }
+      m.skuSet.add(sku);
     }
   }
 
@@ -152,11 +182,14 @@ export function computeOverview(prepped, allowedSkuSet = null) {
       adSpend: m.adSpend,
     }));
 
+  // 正/负毛利计数：上传产品清单时遍历全部产品 SKU（包含未销售/0 利润），保证所有产品都被算到
+  const skuListForProfit = allowedSkuSet ? [...allowedSkuSet] : [...bySkuProfit.keys()];
   let pos = 0;
   let neg = 0;
-  for (const p of bySkuProfit.values()) {
-    if (p > 0) pos += 1;
-    else neg += 1;
+  for (const sku of skuListForProfit) {
+    const p = bySkuProfit.get(sku);
+    if (p !== undefined && p > 0) pos += 1;
+    else neg += 1; // 未销售（profit undefined）或 profit <= 0 都归到负毛利侧
   }
 
   const margin = totalSales ? totalProfit / totalSales : 0;
@@ -164,7 +197,7 @@ export function computeOverview(prepped, allowedSkuSet = null) {
   const summary = [
     `整体盈利${margin >= 0.2 ? '良好' : '偏薄'}：${skus.size} 个有效 SKU 合计毛利润 ${fmtMoney(totalProfit)}，整体毛利率 ${(margin * 100).toFixed(1)}%`,
     negCount > 0
-      ? `存在明显问题产品：${negCount} 个 SKU 毛利润为负，建议优化利润或淘汰`
+      ? `存在明细问题产品：${negCount} 个 SKU 毛利润为负，建议优化利润或淘汰`
       : '本周期未发现亏损 SKU，产品结构健康',
     outOfStockRows > 0
       ? `部分产品库存紧张：${outOfStockRows} 行数据存在断货/预计断货时间，注意补货节奏`

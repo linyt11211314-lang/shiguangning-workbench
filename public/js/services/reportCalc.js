@@ -105,10 +105,20 @@ export function computeOverview(prepped, allowedSkuSet = null) {
   //  故自上而下第一个命中即等于 VLOOKUP 首次匹配）。
   // 注意：不能取 min（最早 ym）——领星源同 SKU 多行乱序时，min 会把 SKU 归到错误的上架月份，
   // 导致概况月度表 D3:L13 与产品表现 sheet 对不上。
+  // 第一遍：记录 SKU 第一次出现的行（保留 ym，即使该行 ym 为空也不能丢——后续会上升级）。
   const skuYms = new Map();
   for (const r of prepped) {
-    if (!r.sku || !r.ym) continue;
-    if (!skuYms.has(r.sku)) skuYms.set(r.sku, r.ym); // 保留源表自上而下第一个出现的 ym
+    if (!r.sku) continue;
+    if (!skuYms.has(r.sku)) skuYms.set(r.sku, r.ym || '');
+  }
+  // 第二遍：升级 SKU 的 ym 为 prepped 中该 SKU 的第一个非空 ym（首次销售月份）。
+  // 修复 bug：原 `if (!r.sku || !r.ym) continue` 会让 ym=空行的 SKU 永不入 skuYms，
+  // 随后补全逻辑 `if (!ym) continue` 也会跳过它——结果：产品清单里有该 SKU 但 E5:E15 月度表少 1。
+  for (const sku of skuYms.keys()) {
+    if (skuYms.get(sku)) continue;
+    for (const r of prepped) {
+      if (r.sku === sku && r.ym) { skuYms.set(sku, r.ym); break; }
+    }
   }
 
   const rows = allowedSkuSet ? prepped.filter((r) => allowedSkuSet.has(r.sku)) : prepped;
@@ -156,9 +166,16 @@ export function computeOverview(prepped, allowedSkuSet = null) {
 
   // 补全：产品 SKU 有上架月份但 0 销售行的，也计入对应月份 SKU 数（保证月度 SKU 数 = 产品表现 SKU 数）
   if (allowedSkuSet) {
+    // 兜底月份：取月度表中已存在的最大 ym（即领星源真实最新销售月）。
+    // 用于 skuYms 没有任何 ym 的 SKU（领星源中完全没出现 / 出现但所有行 ym 都空）——
+    // 过去会被静默跳过，导致 E5:E15 月度 SKU 数 < 产品表现列（B4）。
+    let fallbackYm = '';
+    for (const k of monthlyMap.keys()) if (k > fallbackYm) fallbackYm = k;
+
     for (const sku of allowedSkuSet) {
-      const ym = skuYms.get(sku);
-      if (!ym) continue;
+      let ym = skuYms.get(sku);
+      if (!ym) ym = fallbackYm;
+      if (!ym) continue; // 兜底月份也不存在（极端）才真正跳过
       let m = monthlyMap.get(ym);
       if (!m) {
         m = { skuSet: new Set(), qty: 0, qty30: 0, sales: 0, profit: 0, refundQty: 0, adSpend: 0 };

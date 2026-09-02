@@ -20,6 +20,7 @@
 
 import { DATA_SHEET } from './reportTemplate.js';
 import { prepRows, computeOverview, computeCases, computeCategory, categorySummary, MONTHLY_ROWS } from './reportCalc.js';
+import { SKU_HEADER } from './dataImport.js';
 
 const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
@@ -427,6 +428,35 @@ function cellXML(ref, value, colInfo) {
 /* ===================== 主流程 ===================== */
 
 /**
+ * 复刻产品表现 I 列 VLOOKUP(领星数据源!..., 3, FALSE) 的精确匹配语义：
+ * 在「写入领星数据源 sheet 的原始行 rows（顺序与 sheet 完全一致）」中，对每个 SKU 找
+ * 列 A(MSKU) 首次精确匹配的行，取列 C(创建时间) 的 ym(YYYY-MM)。
+ *
+ * 关键：必须在 rows（即实际写入 sheet 的那份数据）上取首匹配，不能遍历 prepped——
+ * prepRows 会重排/去重，使同一 SKU 的「首匹配行」与 Excel 在 sheet 上的首匹配行不同，
+ * 导致上架月份错位、月度 SKU 数差 1（如概况 55 / 产品表现 56）。
+ * @param {Object[]} rows 写入领星数据源 sheet 的原始数据行（buildRows 输出，键为模板表头）
+ * @param {Set<string>} allowedSkuSet 产品 SKU 集合（概况口径）
+ * @param {string} [skuHeader] SKU 列名，默认 SKU_HEADER('MSKU')
+ * @param {string} [dateHeader] 创建时间列名，默认 '创建时间'
+ * @returns {Map<string,string>} SKU -> ym(YYYY-MM)
+ */
+export function buildLaunchYmMap(rows, allowedSkuSet, skuHeader = SKU_HEADER, dateHeader = '创建时间') {
+  const map = new Map();
+  for (const sku of allowedSkuSet) {
+    const target = String(sku);
+    for (const r of rows) {
+      if (String(r[skuHeader] ?? '').trim() === target) {
+        const ymM = String(r[dateHeader] ?? '').match(/^(\d{4}-\d{2})/);
+        if (ymM) map.set(sku, ymM[1]);
+        break; // 首个精确匹配即止 = VLOOKUP(FALSE) 语义
+      }
+    }
+  }
+  return map;
+}
+
+/**
  * 生成报表
  * @param {Object} opt
  * @param {Blob|ArrayBuffer} opt.templateBlob 模板文件
@@ -589,12 +619,9 @@ export async function generateReport({ templateBlob, headers, rows, product: pro
 
     // 概况严格按产品表现 sheet 口径：每个产品 SKU 在领星数据源精确匹配首次出现行的「创建时间」(C列=I列VLOOKUP第3列)，
     // 用 JS 端复刻 VLOOKUP(...,FALSE) 的精确匹配语义，保证概况月度表与产品表现 I 列完全一致。
-    const launchYmMap = new Map();
-    for (const sku of allowedSkuSet) {
-      for (const r of prepped) {
-        if (r.sku === sku && r.ym) { launchYmMap.set(sku, r.ym); break; }
-      }
-    }
+    // 概况严格按产品表现 sheet 口径：在写入领星数据源 sheet 的原始行(rows，顺序与 sheet 一致)
+    // 上复刻 Excel VLOOKUP(...,FALSE) 精确匹配，取列C(创建时间) ym —— 与产品表现 I 列公式完全等价。
+    const launchYmMap = buildLaunchYmMap(rows, allowedSkuSet);
 
     const ov = computeOverview(prepped, allowedSkuSet, launchYmMap);
     const cases = computeCases(prepped, skuNameMap, allowedSkuSet);

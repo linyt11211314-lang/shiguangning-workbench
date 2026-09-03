@@ -38,11 +38,12 @@ const HEADER_MAP = [
   ['预计利润', 'profit'],
   ['利润率(%)', 'margin'],
   ['产品描述', 'description'],
+  ['已上传', 'uploaded'],
 ];
 const HEADERS = HEADER_MAP.map(([h]) => h);
 
 /** 每列宽度（对齐美观） */
-const COL_WIDTHS = [26, 34, 18, 10, 10, 30, 20, 30, 20, 30, 20, 10, 10, 10, 10, 12, 8, 12, 12, 12, 10, 10, 11, 11, 10, 34];
+const COL_WIDTHS = [26, 34, 18, 10, 10, 30, 20, 30, 20, 30, 20, 10, 10, 10, 10, 12, 8, 12, 12, 12, 10, 10, 11, 11, 10, 34, 10];
 
 function getXLSX() {
   const X = window.XLSX;
@@ -84,6 +85,7 @@ function productToRow(p) {
     预计利润: r99 ? r2(r99.displayProfit) : (r.profit == null ? '' : r2(r.profit)),
     '利润率(%)': r99 ? r2(r99.displayMargin * 100) : (r.margin == null ? '' : r2(r.margin * 100)),
     产品描述: p.description || '',
+    已上传: Boolean(p.uploaded),
   };
 }
 
@@ -188,6 +190,7 @@ function rowToProduct(row, defaultCategory = 'niuma') {
     supplies,
     quote,
     description: String(g('产品描述')).trim(),
+    uploaded: Boolean(g('已上传')),
   };
 }
 

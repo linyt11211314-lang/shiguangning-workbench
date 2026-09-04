@@ -739,7 +739,18 @@ function openProductModal(existing, onDone) {
   const suppliesBox = body.querySelector('[data-supplies]');
   const addSupplyBtn = body.querySelector('[data-add-supply]');
   let supplyCount = 0;
-  function renderSupplies() {
+  function renderSupplies(opts = {}) {
+    // 1) 渲染前快照已有值，"添加货源/移除货源"重渲染时保留其它行已填内容
+    const prev = [];
+    if (opts.snapshot !== false) {
+      suppliesBox.querySelectorAll('[data-supply-row]').forEach((row) => {
+        prev.push({
+          link: row.querySelector('[data-sl-link]').value,
+          specColor: row.querySelector('[data-sl-spec]').value,
+        });
+      });
+    }
+    // 2) 清空并重建空白行 DOM
     suppliesBox.innerHTML = '';
     for (let i = 0; i < supplyCount; i++) {
       const row = document.createElement('div');
@@ -775,20 +786,23 @@ function openProductModal(existing, onDone) {
     addSupplyBtn.style.display = supplyCount >= 3 ? 'none' : 'inline-flex';
     const left = 3 - supplyCount;
     addSupplyBtn.innerHTML = `${icon('plus')} 添加货源${left > 0 ? `（还可加 ${left} 条）` : ''}`;
+    // 3) 回填：opts.values 优先（弹窗初始化），否则用快照的 prev
+    const values = opts.values || prev;
+    values.forEach((s, i) => {
+      const row = suppliesBox.children[i];
+      if (!row || !s) return;
+      if (s.link !== undefined) row.querySelector('[data-sl-link]').value = s.link;
+      if (s.specColor !== undefined) row.querySelector('[data-sl-spec]').value = s.specColor;
+      if (row._syncLink) row._syncLink();
+    });
   }
   addSupplyBtn.addEventListener('click', () => {
     if (supplyCount < 3) { supplyCount++; renderSupplies(); }
   });
   if (existing && (existing.supplies || []).length) {
     supplyCount = Math.min(existing.supplies.length, 3);
-    renderSupplies();
-    (existing.supplies || []).slice(0, 3).forEach((s, i) => {
-      const row = suppliesBox.children[i];
-      if (!row) return;
-      row.querySelector('[data-sl-link]').value = s.link || '';
-      row.querySelector('[data-sl-spec]').value = s.specColor || '';
-      if (row._syncLink) row._syncLink();
-    });
+    // 初始化用 existing.supplies 直接回填，跳过快照（避免与现有行重复写入）
+    renderSupplies({ snapshot: false, values: existing.supplies.slice(0, 3) });
   } else {
     supplyCount = 1;
     renderSupplies();

@@ -21,23 +21,12 @@ const DEFAULTS = {
   dimWidth: '',       // 宽 cm
   dimHeight: '',      // 高 cm
   volCoef: '',         // 体积重系数（国际空运/快递默认 5000；留空则不计算体积重）
-  boxPreset: '',      // 箱规预设：空=自定义；选预设时自动填长宽高
   boxQty: '',         // 单箱件数 个（物流预留字段）
   fbaFee: '9',        // FBA 配送费 AED/件（默认 9）
   commissionRate: '15', // 亚马逊佣金率 %（默认 15）
   adSpend: '',        // 广告花费 AED
   adSales: '',        // 广告销售额 AED（算 ACOS）
 };
-
-// 箱规预设：常见跨境物流纸箱尺寸（外径 cm）
-const BOX_PRESETS = [
-  { key: '',           label: '自定义（手动填长宽高）',  l: '', w: '', h: '' },
-  { key: 'mini',       label: '小件 30×20×15 cm',     l: '30', w: '20', h: '15' },
-  { key: 'small',      label: '小箱 40×30×20 cm',     l: '40', w: '30', h: '20' },
-  { key: 'medium',     label: '中箱 50×40×30 cm',     l: '50', w: '40', h: '30' },
-  { key: 'large',      label: '大箱 60×40×40 cm',     l: '60', w: '40', h: '40' },
-  { key: 'xlarge',     label: '大件 70×50×50 cm',     l: '70', w: '50', h: '50' },
-];
 
 function load() {
   try {
@@ -89,14 +78,6 @@ function fieldText(key, label, state, placeholder = '如 SKU-001') {
     <div class="fba-field">
       <label>${esc(label)}</label>
       <input class="input" type="text" data-fba-key="${esc(key)}" value="${esc(state[key] ?? '')}" placeholder="${esc(placeholder)}" maxlength="80">
-    </div>`;
-}
-function fieldSelect(key, label, options, state) {
-  const opts = options.map(([v, t]) => `<option value="${esc(v)}"${(state[key] ?? '') === v ? ' selected' : ''}>${esc(t)}</option>`).join('');
-  return `
-    <div class="fba-field">
-      <label>${esc(label)}</label>
-      <select class="input" data-fba-key="${esc(key)}" data-fba-role="select">${opts}</select>
     </div>`;
 }
 
@@ -178,9 +159,12 @@ function renderRecordsList(records) {
     const profitCls = (sum.netProfit ?? 0) >= 0 ? 'pos' : 'neg';
     return `
       <div class="fba-list-item" data-rec-id="${esc(r.id)}">
-        <div class="fba-list-main">
-          <div class="fba-list-sku">${esc(r.sku || '(未命名)')}</div>
-          <div class="fba-list-meta">${esc(fmtTime(r.savedAt))}</div>
+        <div class="fba-list-row" data-act="toggle" data-rec-id="${esc(r.id)}" title="点击查看总览">
+          <span class="fba-list-sku">${esc(r.sku || '(未命名)')}</span>
+          <span class="fba-list-meta">${esc(fmtTime(r.savedAt))}</span>
+          <span class="fba-list-arrow">▸</span>
+        </div>
+        <div class="fba-list-detail">
           <div class="fba-list-stats">
             <span>售价 ${fmt(sum.price)}</span>
             <span>销量 ${fmt(sum.qty, 0)}</span>
@@ -188,10 +172,10 @@ function renderRecordsList(records) {
             <span>净利 <b class="${profitCls}">${fmt(sum.netProfit)}</b></span>
             <span>利率 ${esc(margin)}</span>
           </div>
-        </div>
-        <div class="fba-list-actions">
-          <button class="btn btn-soft btn-sm" data-act="load" data-rec-id="${esc(r.id)}">载入</button>
-          <button class="btn btn-soft btn-sm" data-act="del" data-rec-id="${esc(r.id)}">删除</button>
+          <div class="fba-list-actions">
+            <button class="btn btn-soft btn-sm" data-act="load" data-rec-id="${esc(r.id)}">载入</button>
+            <button class="btn btn-soft btn-sm" data-act="del" data-rec-id="${esc(r.id)}">删除</button>
+          </div>
         </div>
       </div>`;
   }).join('');
@@ -218,37 +202,51 @@ export function render(container, ctx) {
     field('dimHeight', '高', 'cm', state) +
     field('volCoef', '体积重系数', '（空=不计体积重）', state, '5000 国际空运；6000 海运头程') +
     field('unitWeight', '单件实重', 'kg', state) +
-    field('boxQty', '单箱件数', '个', state) +
-    fieldSelect('boxPreset', '箱规预设', BOX_PRESETS.map((p) => [p.key, p.label]), state);
+    field('boxQty', '单箱件数', '个', state);
   // 成本区卡片：分组 + 双 grid
   const costCard = `
     <div class="fba-card">
       <h3>🧾 成本与配送费用</h3>
+      <div class="fba-chargeable" id="fbaChargeable">
+        <span class="fba-chargeable-label">📦 计费重</span>
+        <span class="fba-chargeable-value" id="fbaChargeableValue">— kg</span>
+        <span class="fba-chargeable-detail" id="fbaChargeableDetail">填长宽高 + 体积重系数后自动计算</span>
+      </div>
       <div class="fba-section-title">基础成本</div>
       <div class="fba-grid">${costBaseFields}</div>
-      <div class="fba-section-title">产品尺寸与箱规（头程按实重 vs 体积重取大）</div>
+      <div class="fba-section-title">产品尺寸（头程按实重 vs 体积重取大）</div>
       <div class="fba-grid cols-4">${costDimFields}</div>
     </div>`;
   const adFields = field('adSpend', '广告花费', 'AED', state) + field('adSales', '广告销售额', 'AED', state);
 
   container.innerHTML = `
     <style>
-      .fba-layout { display: grid; grid-template-columns: 280px 1fr; gap: 18px; padding: 4px 2px 28px; max-width: 1180px; margin: 0 auto; align-items: start; }
-      @media (max-width: 900px) { .fba-layout { grid-template-columns: 1fr; } }
-      .fba-side { background: var(--card,#fff); border:1px solid var(--border,#ececf1); border-radius:14px; padding:16px 16px 12px; box-shadow:0 1px 3px rgba(20,20,40,.04); position: sticky; top: 12px; max-height: calc(100vh - 24px); overflow: auto; }
-      .fba-side h3 { margin: 0 0 10px; font-size: 14px; }
+      .fba-layout { display: grid; grid-template-columns: 220px 1fr; gap: 14px; padding: 4px 4px 28px; max-width: 1040px; margin: 0; align-items: start; }
+      @media (max-width: 860px) { .fba-layout { grid-template-columns: 1fr; } }
+      .fba-side { background: var(--card,#fff); border:1px solid var(--border,#ececf1); border-radius:14px; padding:14px 12px 10px; box-shadow:0 1px 3px rgba(20,20,40,.04); position: sticky; top: 12px; max-height: calc(100vh - 24px); overflow: auto; }
+      .fba-side h3 { margin: 0 0 8px; font-size: 14px; }
       .fba-side-head { display:flex; justify-content:space-between; align-items:center; margin-bottom: 8px; }
       .fba-side-head .count { font-size:12px; color:var(--muted,#8a8a99); }
       .fba-list-empty { font-size:12px; color:var(--muted,#8a8a99); padding: 18px 4px; text-align:center; line-height:1.7; }
-      .fba-list-item { border:1px solid var(--border,#ececf1); border-radius:10px; padding:10px 12px; margin-bottom:10px; background:var(--input,#fafafe); }
+      .fba-list-item { border:1px solid var(--border,#ececf1); border-radius:10px; margin-bottom:8px; background:var(--input,#fafafe); overflow: hidden; }
       .fba-list-item:last-child { margin-bottom:0; }
-      .fba-list-main { margin-bottom: 8px; }
-      .fba-list-sku { font-weight: 600; font-size: 14px; color: var(--text,#1c1c28); word-break: break-all; }
-      .fba-list-meta { font-size:11px; color:var(--muted,#8a8a99); margin-top:2px; }
-      .fba-list-stats { display:flex; flex-wrap:wrap; gap:4px 10px; font-size:11px; color:var(--muted,#6a6a78); margin-top:6px; }
+      .fba-list-row { display:flex; align-items:center; justify-content:space-between; padding:8px 10px; cursor:pointer; gap:6px; user-select:none; }
+      .fba-list-row:hover { background: var(--card-hover, rgba(108,92,231,.06)); }
+      .fba-list-row .fba-list-sku { flex: 1; min-width: 0; font-weight: 600; font-size: 13px; color: var(--text,#1c1c28); word-break: break-all; }
+      .fba-list-row .fba-list-meta { font-size:10px; color:var(--muted,#8a8a99); flex-shrink:0; }
+      .fba-list-arrow { font-size:11px; color:var(--muted,#8a8a99); transition: transform .15s ease; flex-shrink:0; }
+      .fba-list-item.is-open .fba-list-arrow { transform: rotate(90deg); }
+      .fba-list-detail { display: none; padding: 8px 10px 10px; border-top: 1px dashed var(--border,#ececf1); background: var(--card, #fff); }
+      .fba-list-item.is-open .fba-list-detail { display: block; }
+      .fba-list-stats { display:flex; flex-wrap:wrap; gap:4px 8px; font-size:11px; color:var(--muted,#6a6a78); margin-bottom:8px; }
       .fba-list-stats .pos { color:#16a34a; } .fba-list-stats .neg { color:#dc2626; }
       .fba-list-actions { display:flex; gap:6px; }
       .fba-list-actions .btn { flex:1; font-size:12px; padding:5px 8px; }
+
+      .fba-chargeable { display:flex; align-items:center; gap:10px; padding:10px 14px; background:linear-gradient(135deg,#f7f7fb,#eef0fa); border:1px solid var(--border,#ececf1); border-radius:10px; margin-bottom:14px; flex-wrap: wrap; }
+      .fba-chargeable-label { font-size:12px; color:var(--muted,#6a6a78); font-weight:500; }
+      .fba-chargeable-value { font-size:20px; font-weight:700; color:var(--accent,#6c5ce7); }
+      .fba-chargeable-detail { font-size:11px; color:var(--muted,#8a8a99); flex: 1; min-width: 0; }
 
       .fba-main { min-width: 0; }
       .fba-card { background: var(--card,#fff); border:1px solid var(--border,#ececf1); border-radius:14px;
@@ -318,6 +316,11 @@ export function render(container, ctx) {
     const headDetail = r.volumetricKg > 0
       ? `实重 ${fmt(r.unitWeight)} × 体积重 ${fmt(r.volumetricKg)} → 取大 ${fmt(r.chargeableKg)} kg${r.headByVolume ? '（按体积重计费）' : '（按实重计费）'}`
       : `实重 ${fmt(r.chargeableKg)} kg`;
+    // 同步更新卡片标题下方的计费重摘要条
+    const chargeVal = container.querySelector('#fbaChargeableValue');
+    const chargeDet = container.querySelector('#fbaChargeableDetail');
+    if (chargeVal) chargeVal.textContent = `${fmt(r.chargeableKg)} kg`;
+    if (chargeDet) chargeDet.textContent = headDetail;
     resultsEl.innerHTML = `
       <div class="fba-kpi"><div class="k">单件总成本（AED）</div><div class="v">${fmt(r.unitTotalAED)}</div><div class="sub">采购 ${fmt(r.unitCostAED)} + 头程 ${fmt(r.unitHeadAED)}</div></div>
       <div class="fba-kpi"><div class="k">单件净利润（AED）</div><div class="v ${clsUnitNet}">${fmt(r.unitNetProfit)}</div><div class="sub">净利润 ÷ 销量</div></div>
@@ -338,25 +341,12 @@ export function render(container, ctx) {
       recalc();
     }
   });
-  // select 走 change 事件：箱规预设变化 → 自动回填长宽高到对应输入框
+  // select 走 change 事件（暂未使用，箱规预设已移除）
   container.addEventListener('change', (e) => {
     const el = e.target;
     if (!el || !el.dataset || !el.dataset.fbaKey) return;
     state[el.dataset.fbaKey] = el.value;
     save(state);
-    if (el.dataset.fbaKey === 'boxPreset') {
-      const preset = BOX_PRESETS.find((p) => p.key === el.value);
-      if (preset) {
-        ['dimLength', 'dimWidth', 'dimHeight'].forEach((k) => {
-          const inp = container.querySelector(`[data-fba-key="${k}"]`);
-          if (inp) {
-            inp.value = preset[k === 'dimLength' ? 'l' : k === 'dimWidth' ? 'w' : 'h'];
-            state[k] = inp.value;
-          }
-        });
-        save(state);
-      }
-    }
     recalc();
   });
 
@@ -438,27 +428,36 @@ export function render(container, ctx) {
   const listEl = container.querySelector('#fbaRecords');
   if (listEl) {
     listEl.addEventListener('click', (e) => {
+      // 优先匹配：行内按钮（载入/删除）
       const btn = e.target.closest('button[data-act]');
-      if (!btn) return;
-      const id = btn.getAttribute('data-rec-id');
-      const rec = records.find((r) => r.id === id);
-      if (!rec) return;
-      if (btn.dataset.act === 'load') {
-        Object.assign(state, rec.state);
-        save(state);
-        Object.keys(state).forEach((k) => {
-          const inp = container.querySelector(`[data-fba-key="${k}"]`);
-          if (inp) inp.value = state[k] ?? '';
-        });
-        recalc();
-        syncAutoTotal();
-        if (ctx && typeof ctx.toast === 'function') ctx.toast(`已载入：${rec.sku}`);
-      } else if (btn.dataset.act === 'del') {
-        const ok = confirm(`确认删除「${rec.sku}」？此操作不可撤销。`);
-        if (!ok) return;
-        records = records.filter((r) => r.id !== id);
-        saveRecords(records);
-        refreshList();
+      if (btn) {
+        const id = btn.getAttribute('data-rec-id');
+        const rec = records.find((r) => r.id === id);
+        if (!rec) return;
+        if (btn.dataset.act === 'load') {
+          Object.assign(state, rec.state);
+          save(state);
+          Object.keys(state).forEach((k) => {
+            const inp = container.querySelector(`[data-fba-key="${k}"]`);
+            if (inp) inp.value = state[k] ?? '';
+          });
+          recalc();
+          syncAutoTotal();
+          if (ctx && typeof ctx.toast === 'function') ctx.toast(`已载入：${rec.sku}`);
+        } else if (btn.dataset.act === 'del') {
+          const ok = confirm(`确认删除「${rec.sku}」？此操作不可撤销。`);
+          if (!ok) return;
+          records = records.filter((r) => r.id !== id);
+          saveRecords(records);
+          refreshList();
+        }
+        return;
+      }
+      // 列表行点击 → 切换展开状态（显示总览卡片）
+      const row = e.target.closest('[data-act="toggle"]');
+      if (row) {
+        const item = row.closest('.fba-list-item');
+        if (item) item.classList.toggle('is-open');
       }
     });
   }

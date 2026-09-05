@@ -18,7 +18,6 @@ import { render as renderAds } from './pages/ads.js';
 import { render as renderAnalysis } from './pages/analysis.js';
 import { render as renderStockAlert } from './pages/stockAlert.js';
 import { render as renderProfit } from './pages/profit.js';
-import { render as renderFba } from './pages/fba.js';
 
 const NAV = [
   { id: 'library', label: '选品库', icon: 'box' },
@@ -28,7 +27,6 @@ const NAV = [
   { id: 'commission', label: '我的提成预估', icon: 'chart' },
   { id: 'stockalert', label: '库存预警', icon: 'alert' },
   { id: 'profit', label: '利润看板', icon: 'trending' },
-  { id: 'fba', label: 'FBA利润计算', icon: 'trending' },
   { id: 'schedule', label: '日程计划', icon: 'calendar' },
   { id: 'settings', label: '设置', icon: 'settings' },
 ];
@@ -43,7 +41,6 @@ const TITLES = {
   analysis: { title: '数据分析', sub: '领星数据 → 月度品牌产品分析报表' },
   stockalert: { title: '库存预警', sub: '基于领星数据自动扫描库存，结合运输时间生成补货建议' },
   profit: { title: '利润看板', sub: '领星利润报表 + 采购单 → 真实利润分析与成本维护' },
-  fba: { title: 'FBA利润计算', sub: '单产品录入 → 自动算净利润 / 利润率 / 广告指标' },
   settings: { title: '设置', sub: '外观、AI 服务与偏好' },
 };
 
@@ -51,7 +48,7 @@ let currentRoute = 'library';
 const ROUTE_KEY = 'sgn.route';
 
 function pageOf(route) {
-  if (route === 'home' || route === 'library' || route === 'settings' || route === 'commission' || route === 'schedule' || route === 'ads' || route === 'analysis' || route === 'stockalert' || route === 'profit' || route === 'fba') return route;
+  if (route === 'home' || route === 'library' || route === 'settings' || route === 'commission' || route === 'schedule' || route === 'ads' || route === 'analysis' || route === 'stockalert' || route === 'profit') return route;
   if (route.startsWith('listing')) return 'listing';
   return 'home';
 }
@@ -129,7 +126,6 @@ function renderPage() {
   else if (page === 'analysis') renderAnalysis(container, ctx);
   else if (page === 'stockalert') renderStockAlert(container, ctx);
   else if (page === 'profit') renderProfit(container, ctx);
-  else if (page === 'fba') renderFba(container, ctx);
   else if (page === 'settings') renderSettings(container, ctx);
 }
 

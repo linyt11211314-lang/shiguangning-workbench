@@ -19,11 +19,12 @@ import {
 } from '../store/profitStore.js';
 import { parseProfitFile, parsePurchaseFile, computeProfit } from '../services/profitCalc.js';
 import { renderShippingCompare, bindShipping } from '../components/shippingCompare.js';
+import { render as renderFba } from './fba.js';
 
 const LOSS_DISPLAY = 25; // 亏损预警默认展示条数
 let detailShowAll = false; // 全量明细是否展开零销量 SKU
 
-// 利润看板次导航：analysis = 利润分析；shipping = 海运空运对比
+// 利润看板次导航：analysis = 利润分析；shipping = 海运空运对比；fba = FBA 利润计算
 let profitSubTab = 'analysis';
 // 海运空运对比输入状态：刷新后保留上次使用的数据（来自 localStorage，与默认值合并）
 let shipState = getShipState();
@@ -111,7 +112,9 @@ export function render(container, ctx) {
     ${subNav()}
     ${profitSubTab === 'shipping'
       ? renderShippingCompare(shipState)
-      : renderAnalysisBody({ params, report, purchase, overrides, headOverrides, siteFilter, result, hasReport, viewTop, viewLoss, viewAd, viewRows })}
+      : profitSubTab === 'fba'
+        ? '<div id="fbaHost"></div>'
+        : renderAnalysisBody({ params, report, purchase, overrides, headOverrides, siteFilter, result, hasReport, viewTop, viewLoss, viewAd, viewRows })}
   </div>`;
 
   bindEvents(container, ctx);
@@ -124,6 +127,7 @@ function subNav() {
   <div class="pf-subnav">
     ${tab('analysis', '📊 利润分析')}
     ${tab('shipping', '🚢 海运空运对比')}
+    ${tab('fba', '🧮 FBA利润计算')}
   </div>`;
 }
 
@@ -429,6 +433,12 @@ function bindEvents(container, ctx) {
   // 「海运空运对比」tab：仅绑定对比输入，以下均为「利润分析」专用事件
   if (profitSubTab === 'shipping') {
     bindShipping(container, shipState, saveShipState);
+    return;
+  }
+  // 「FBA 利润计算」tab：复用 pages/fba.js 的 render 挂载到 #fbaHost
+  if (profitSubTab === 'fba') {
+    const host = container.querySelector('#fbaHost');
+    if (host) renderFba(host, ctx);
     return;
   }
 

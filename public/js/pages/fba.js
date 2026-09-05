@@ -25,7 +25,8 @@ const DEFAULTS = {
   boxLength: '',       // 整箱长 cm（仅 dimSource='box' 用）
   boxWidth: '',        // 整箱宽 cm（仅 dimSource='box' 用）
   boxHeight: '',       // 整箱高 cm（仅 dimSource='box' 用）
-  boxQty: '',         // 单箱件数 个（按箱子尺寸时必填）
+  boxQty: '',          // 单箱件数 个（按箱子尺寸时必填）
+  boxWeight: '',       // 整箱重量 kg（仅 dimSource='box' 用，与整箱体积重取大）
   fbaFee: '9',        // FBA 配送费 AED/件（默认 9）
   commissionRate: '15', // 亚马逊佣金率 %（默认 15）
   adSpend: '',        // 广告花费 AED
@@ -63,12 +64,9 @@ function fmt(v, dec = 2) {
   if (v == null || !Number.isFinite(v)) return '—';
   return v.toLocaleString('zh-CN', { minimumFractionDigits: dec, maximumFractionDigits: dec });
 }
-function fmtTime(ts) {
-  if (!ts) return '';
-  const d = new Date(ts);
-  const p = (n) => String(n).padStart(2, '0');
-  // 列表里不要完整日期（太丑），只显示 HH:MM（鼠标 hover 可在原生 title 上看完整时间）
-  return `${p(d.getHours())}:${p(d.getMinutes())}`;
+function fmtTime(_ts) {
+  // 列表里完全不要时间显示（用户偏好「只显示 SKU」）
+  return '';
 }
 
 function field(key, label, unit, state, placeholder = '—') {
@@ -101,37 +99,50 @@ export function compute(s, rate) {
   const costCny = num(s.costCny);
   const headKgPrice = num(s.headKgPrice);
   const unitWeight = num(s.unitWeight);
+  const boxWeight = num(s.boxWeight);
   const fbaFee = num(s.fbaFee);
   const cr = num(s.commissionRate) / 100;
   const adSpend = num(s.adSpend);
   const adSales = num(s.adSales);
 
-  // 体积重：两种来源二选一
-  //   product：长 × 宽 × 高 ÷ 系数（单件体积）
-  //   box：    箱长 × 箱宽 × 箱高 ÷ 单箱件数 ÷ 系数（整箱体积重摊到每件）
-  // 任一必要字段为空 / 0 → 体积重 = 0（按实重计费，老数据兼容）
+  // 体积重来源：product = 按产品长宽高；box = 按整箱长宽高 + 单箱件数均摊
   const source = (s.dimSource === 'box') ? 'box' : 'product';
   const L = num(s.dimLength), W = num(s.dimWidth), H = num(s.dimHeight);
   const BL = num(s.boxLength), BW = num(s.boxWidth), BH = num(s.boxHeight);
   const boxQty = num(s.boxQty);
-  const coef = num(s.volCoef);  // 空/0 → 系数无效，不计算体积重
-  let volumetricKg = 0;
-  if (coef > 0) {
-    if (source === 'box') {
-      if (BL > 0 && BW > 0 && BH > 0 && boxQty > 0) {
-        volumetricKg = (BL * BW * BH) / boxQty / coef;
-      }
-    } else {
-      if (L > 0 && W > 0 && H > 0) {
-        volumetricKg = (L * W * H) / coef;
-      }
-    }
+  const coef = num(s.volCoef);
+
+  // 分模式计算体积重 / 计费重 / 单件头程
+  //   product：单件实重 vs 单件体积重，取大；头程按"单件"付
+  //   box：   整箱重量 vs 整箱体积重（不除件数），取大；头程按"整箱"付，再 ÷ 单箱件数 摊到每件
+  let volumetricKg = 0;          // 用于 headDetail 文案展示
+  let chargeableKg = 0;          // 用于计费重摘要
+  let boxVolumetricKg = 0;       // 整箱体积重（仅 box）
+  let boxHeadTotalAED = 0;       // 整箱头程（AED，仅 box）
+  let unitHeadAED = 0;           // 单件头程（AED，统一对外）
+  let headByVolume = false;      // 是否按体积重计费
+  let weightLabel = '单件实重';  // 文案：当前对比的"重量"叫什么
+
+  if (source === 'box') {
+    boxVolumetricKg = (coef > 0 && BL > 0 && BW > 0 && BH > 0)
+      ? (BL * BW * BH) / coef : 0;
+    const boxChargeable = Math.max(boxWeight, boxVolumetricKg);
+    boxHeadTotalAED = headKgPrice * boxChargeable * rate;
+    unitHeadAED = boxQty > 0 ? boxHeadTotalAED / boxQty : 0;
+    volumetricKg = boxVolumetricKg;
+    chargeableKg = boxChargeable;
+    headByVolume = boxVolumetricKg > boxWeight;
+    weightLabel = '整箱重量';
+  } else {
+    volumetricKg = (coef > 0 && L > 0 && W > 0 && H > 0)
+      ? (L * W * H) / coef : 0;
+    chargeableKg = Math.max(unitWeight, volumetricKg);
+    unitHeadAED = headKgPrice * chargeableKg * rate;
+    headByVolume = volumetricKg > unitWeight;
+    weightLabel = '单件实重';
   }
-  // 计费重 = max(实重, 体积重)；体积重为 0 时退化为仅按实重
-  const chargeableKg = Math.max(unitWeight, volumetricKg);
 
   const unitCostAED = costCny * rate;
-  const unitHeadAED = headKgPrice * chargeableKg * rate;   // 头程按"实重 vs 体积重"取大
   const unitTotalAED = unitCostAED + unitHeadAED;          // 单件总成本（AED）
 
   const autoSales = price * qty;                           // 自动销售额
@@ -150,8 +161,11 @@ export function compute(s, rate) {
 
   return {
     unitCostAED, unitHeadAED, unitTotalAED,
-    volumetricKg, chargeableKg, headByVolume: volumetricKg > unitWeight,
-    dimSource: source, // 用于结果区文案区分
+    volumetricKg, chargeableKg, headByVolume,
+    sourceWeight: source === 'box' ? boxWeight : unitWeight,
+    boxVolumetricKg, boxHeadTotalAED, boxWeight, boxQty,
+    dimSource: source,
+    weightLabel,
     autoSales, salesManual: useManual, sales,
     unitCommission, totalCommission, totalFba, totalProductCost, totalAd,
     netProfit, netMargin, adSpendRatio, acos,
@@ -182,7 +196,6 @@ function renderRecordsList(records) {
       <div class="fba-list-item" data-rec-id="${esc(r.id)}">
         <div class="fba-list-row" data-act="toggle" data-rec-id="${esc(r.id)}" title="点击查看总览">
           <span class="fba-list-sku">${esc(r.sku || '(未命名)')}</span>
-          <span class="fba-list-meta">${esc(fmtTime(r.savedAt))}</span>
           <span class="fba-list-arrow">▸</span>
         </div>
         <div class="fba-list-detail">
@@ -219,18 +232,23 @@ export function render(container, ctx) {
     field('commissionRate', '亚马逊佣金率', '%', state);
   // 体积重来源切换（segmented control）+ 两组尺寸块（可同时填，切换不丢数据）
   const src = (state.dimSource === 'box') ? 'box' : 'product';
+  // 产品段：单件长 × 宽 × 高 ÷ 系数，再与「单件实重」取大 → 单件计费重
   const productDimFields =
     field('dimLength', '长', 'cm', state) +
     field('dimWidth', '宽', 'cm', state) +
-    field('dimHeight', '高', 'cm', state);
+    field('dimHeight', '高', 'cm', state) +
+    field('unitWeight', '单件实重', 'kg', state);
+  // 箱子段：整箱长 × 宽 × 高 ÷ 系数（不除件数），再与「整箱重量」取大 → 整箱计费重；
+  //        整箱头程 ÷ 单箱件数 → 单件头程（按整箱付运费，均摊到每件）
   const boxDimFields =
     field('boxLength', '箱长', 'cm', state) +
     field('boxWidth', '箱宽', 'cm', state) +
-    field('boxHeight', '箱高', 'cm', state);
+    field('boxHeight', '箱高', 'cm', state) +
+    field('boxWeight', '整箱重量', 'kg', state);
+  // 底部共用字段（箱子段才需要）：单箱件数 + 体积重系数
   const costCommonFields =
-    field('volCoef', '体积重系数', '（空=不计体积重）', state, '5000 国际空运；6000 海运头程') +
-    field('unitWeight', '单件实重', 'kg', state) +
-    field('boxQty', '单箱件数', '个', state);
+    field('boxQty', '单箱件数', '个', state) +
+    field('volCoef', '体积重系数', '（空=不计体积重）', state, '5000 国际空运；6000 海运头程');
   // 成本区卡片：分组 + 双 grid + 来源切换
   const costCard = `
     <div class="fba-card">
@@ -244,7 +262,7 @@ export function render(container, ctx) {
       <div class="fba-grid">${costBaseFields}</div>
 
       <div class="fba-section-title fba-section-title-row">
-        <span>📐 产品尺寸 vs 📦 箱子尺寸（头程按实重 vs 体积重取大）</span>
+        <span>📐 产品尺寸 vs 📦 箱子尺寸（头程按"实重 vs 体积重"取大）</span>
         <span class="fba-seg" role="tablist" id="fbaDimSeg">
           <button type="button" data-src="product" class="${src === 'product' ? 'active' : ''}">按产品尺寸</button>
           <button type="button" data-src="box" class="${src === 'box' ? 'active' : ''}">按箱子尺寸</button>
@@ -252,15 +270,14 @@ export function render(container, ctx) {
       </div>
 
       <div class="fba-dim-block ${src === 'product' ? 'active' : ''}" data-dim-block="product">
-        <div class="fba-dim-head">📐 产品尺寸（单件长 × 宽 × 高 ÷ 系数）</div>
-        <div class="fba-grid cols-3">${productDimFields}</div>
+        <div class="fba-dim-head">📐 产品尺寸（长 × 宽 × 高 ÷ 系数，与单件实重取大 = 单件计费重）</div>
+        <div class="fba-grid cols-4">${productDimFields}</div>
       </div>
       <div class="fba-dim-block ${src === 'box' ? 'active' : ''}" data-dim-block="box">
-        <div class="fba-dim-head">📦 整箱尺寸（箱长×宽×高 ÷ 单箱件数 ÷ 系数 = 单件体积重）</div>
-        <div class="fba-grid cols-3">${boxDimFields}</div>
+        <div class="fba-dim-head">📦 箱子尺寸（箱长×宽×高 ÷ 系数，与整箱重量取大 = 整箱计费重；÷单箱件数 = 单件头程）</div>
+        <div class="fba-grid cols-4">${boxDimFields}</div>
+        <div class="fba-grid cols-2" style="margin-top:10px;">${costCommonFields}</div>
       </div>
-
-      <div class="fba-grid cols-4">${costCommonFields}</div>
     </div>`;
   const adFields = field('adSpend', '广告花费', 'AED', state) + field('adSales', '广告销售额', 'AED', state);
 
@@ -350,8 +367,9 @@ export function render(container, ctx) {
           <h3>💰 自动计算结果</h3>
           <div class="fba-results" id="fbaResults"></div>
           <div class="fba-note" id="fbaNote">
-            汇率口径：1 元 = ${fmt(rate, 4)} AED（与利润看板一致）。体积重来源：「按产品尺寸」= 长 × 宽 × 高 ÷ 系数；「按箱子尺寸」= 箱长 × 箱宽 × 箱高 ÷ 单箱件数 ÷ 系数。
-            单件头程按「实重 vs 体积重」取大计费；单件总成本 =（采购 + 单件头程）× 汇率。销售额默认 = 售价 × 销量；填了「总销售额」则以其为准。
+            汇率口径：1 元 = ${fmt(rate, 4)} AED（与利润看板一致）。体积重来源：「按产品尺寸」= 单件长 × 宽 × 高 ÷ 系数，与「单件实重」取大 → 单件计费重；
+            「按箱子尺寸」= 整箱长 × 宽 × 高 ÷ 系数，与「整箱重量」取大 → 整箱计费重，再 ÷ 单箱件数 摊到每件（按整箱付运费）。
+            单件总成本 = 采购 × 汇率 + 单件头程；销售额默认 = 售价 × 销量；填了「总销售额」则以其为准。
           </div>
           <div class="fba-actions">
             <button class="btn btn-primary btn-sm" id="fbaSave">💾 保存当前 SKU</button>
@@ -372,9 +390,25 @@ export function render(container, ctx) {
       ? `（手动 ${fmt(r.sales)}，自动 = ${fmt(r.autoSales)}）`
       : `（自动 = 售价 × 销量）`;
     const sourceLabel = r.dimSource === 'box' ? '箱子尺寸' : '产品尺寸';
-    const headDetail = r.volumetricKg > 0
-      ? `实重 ${fmt(r.unitWeight)} × 体积重 ${fmt(r.volumetricKg)}（${sourceLabel}）→ 取大 ${fmt(r.chargeableKg)} kg${r.headByVolume ? '（按体积重计费）' : '（按实重计费）'}`
-      : `实重 ${fmt(r.chargeableKg)} kg（按${sourceLabel}）`;
+    const sw = r.sourceWeight != null ? r.sourceWeight : 0;
+    const headDetail = (() => {
+      if (r.dimSource === 'box') {
+        // 箱子段：整箱重量 vs 整箱体积重（不除件数）→ 整箱计费重；÷单箱件数 → 单件头程
+        const vb = (r.boxVolumetricKg != null) ? r.boxVolumetricKg : 0;
+        const cb = r.chargeableKg;
+        const qty = (r.boxQty != null) ? r.boxQty : 0;
+        const byVol = vb > sw;
+        if (vb > 0) {
+          return `整箱重量 ${fmt(sw)} × 整箱体积重 ${fmt(vb)} → 取大 ${fmt(cb)} kg（按${byVol ? '体积重' : '整箱重量'}计费）${qty > 0 ? `；÷单箱件数 ${fmt(qty, 0)} → 单件头程 ${fmt(r.unitHeadAED)} AED` : ''}`;
+        }
+        return `整箱重量 ${fmt(cb)} kg（按整箱计费）${qty > 0 ? `；÷单箱件数 ${fmt(qty, 0)} → 单件头程 ${fmt(r.unitHeadAED)} AED` : ''}`;
+      }
+      // 产品段：单件实重 vs 单件体积重 → 单件计费重
+      if (r.volumetricKg > 0) {
+        return `实重 ${fmt(sw)} × 体积重 ${fmt(r.volumetricKg)}（${sourceLabel}）→ 取大 ${fmt(r.chargeableKg)} kg${r.headByVolume ? '（按体积重计费）' : '（按实重计费）'}`;
+      }
+      return `实重 ${fmt(r.chargeableKg)} kg（按${sourceLabel}）`;
+    })();
     // 同步更新卡片标题下方的计费重摘要条
     const chargeVal = container.querySelector('#fbaChargeableValue');
     const chargeDet = container.querySelector('#fbaChargeableDetail');

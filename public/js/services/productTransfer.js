@@ -89,10 +89,18 @@ function productToRow(p) {
   };
 }
 
-/** 导出产品库为 Excel */
-export function exportProductsExcel() {
-  const products = listProducts();
-  if (!products.length) { toastInfo('产品库为空，暂无可导出的数据'); return; }
+/** 导出产品库为 Excel。
+ * @param {Array<object>} [products] 传入则只导出这些产品；不传则导全库（listProducts）。
+ *   传入空数组视为无数据，提示后返回 0。
+ */
+export function exportProductsExcel(products) {
+  const items = Array.isArray(products) ? products : listProducts();
+  if (!items.length) {
+    const emptySel = Array.isArray(products) && products.length === 0;
+    toastInfo(emptySel ? '当前未勾选产品' : '产品库为空，暂无可导出的数据');
+    return 0;
+  }
+  products = items;
   try {
     const X = getXLSX();
     const rows = products.map(productToRow);

@@ -184,11 +184,27 @@ export function render(container, { navigate, rerender }) {
   });
   container.querySelector('[data-add]').addEventListener('click', () => openProductModal(null, rerender));
 
-  // ---------- 导出 Excel ----------
+  // ---------- 导出 Excel（按勾选导出） ----------
   container.querySelector('[data-export]').addEventListener('click', () => {
     try {
-      const n = exportProductsExcel();
-      toastSuccess(`已导出 ${n} 个产品（Excel）`);
+      // 优先按勾选集导出；未勾选时再走"全部"导出。
+      // 直接用 listProducts() 全集按 selectedIds 过滤，避免依赖 grid 闭包内 list。
+      const all = listProducts();
+      let toExport;
+      if (selectedIds.size > 0) {
+        // 仅导当前勾选的（保留产品原始顺序）
+        toExport = all.filter((p) => selectedIds.has(p.id));
+        if (!toExport.length) {
+          toastInfo('已勾选的产品已不在产品库中，无需导出');
+          return;
+        }
+      } else {
+        toExport = all;
+      }
+      const n = exportProductsExcel(toExport);
+      if (n === 0) return; // exportProductsExcel 内部已 toast 原因
+      const extra = selectedIds.size > 0 ? `（来自已勾选 ${selectedIds.size} 个）` : '';
+      toastSuccess(`已导出 ${n} 个产品（Excel）${extra}`);
     } catch (e) {
       toastError(e.message || '导出失败');
     }

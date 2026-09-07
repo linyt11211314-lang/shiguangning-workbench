@@ -184,13 +184,22 @@ export function render(container, { navigate, rerender }) {
   });
   container.querySelector('[data-add]').addEventListener('click', () => openProductModal(null, rerender));
 
-  // ---------- 导出 Excel（按勾选导出） ----------
+  // ---------- 导出 Excel（按勾选导出；未勾选时按"当前可见"导出） ----------
   container.querySelector('[data-export]').addEventListener('click', () => {
     try {
-      // 优先按勾选集导出；未勾选时再走"全部"导出。
-      // 直接用 listProducts() 全集按 selectedIds 过滤，避免依赖 grid 闭包内 list。
+      // 优先按勾选集导出；未勾选时再走"当前可见"导出（按当前分类/状态筛选/搜索词过滤），
+      // 而不是全库导出 —— 避免应用了筛选后出现"只勾了5个却导出70个"的误导。
       const all = listProducts();
+      // 复用 renderGrid 的筛选逻辑：当前分类 + 状态 + 搜索词
+      let visible = all.filter((p) => p.category === currentCategory);
+      if (statusFilter === 'uploaded') visible = visible.filter((p) => p.uploaded);
+      else if (statusFilter === 'unuploaded') visible = visible.filter((p) => !p.uploaded);
+      if (filter) {
+        visible = visible.filter((p) =>
+          `${p.name} ${p.productCategory} ${p.supply1688} ${p.description}`.toLowerCase().includes(filter));
+      }
       let toExport;
+      let scope = '';
       if (selectedIds.size > 0) {
         // 仅导当前勾选的（保留产品原始顺序）
         toExport = all.filter((p) => selectedIds.has(p.id));
@@ -198,13 +207,16 @@ export function render(container, { navigate, rerender }) {
           toastInfo('已勾选的产品已不在产品库中，无需导出');
           return;
         }
+        scope = `（来自已勾选 ${selectedIds.size} 个）`;
       } else {
-        toExport = all;
+        toExport = visible;
+        scope = visible.length === all.length
+          ? '（全部产品）'
+          : `（当前可见 ${visible.length}/${all.length} 个）`;
       }
       const n = exportProductsExcel(toExport);
       if (n === 0) return; // exportProductsExcel 内部已 toast 原因
-      const extra = selectedIds.size > 0 ? `（来自已勾选 ${selectedIds.size} 个）` : '';
-      toastSuccess(`已导出 ${n} 个产品（Excel）${extra}`);
+      toastSuccess(`已导出 ${n} 个产品（Excel）${scope}`);
     } catch (e) {
       toastError(e.message || '导出失败');
     }

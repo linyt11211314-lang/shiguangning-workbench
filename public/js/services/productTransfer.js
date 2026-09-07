@@ -7,12 +7,14 @@ import { listProducts, addProductTracked } from '../store/productStore.js';
 import { toastInfo } from '../ui/toast.js';
 import { AMAZON_SITES, CATEGORY_IDS } from '../config.js';
 import { calculateQuote, apply99 } from './pricing.js';
+import { formatDate } from '../utils.js';
 
 const r2 = (n) => (n === '' || n == null || isNaN(n)) ? '' : Math.round(Number(n) * 100) / 100;
 
 /** 中文表头 → 内部字段 映射（导出与导入共用同一套模板） */
 const HEADER_MAP = [
   ['产品名称', 'name'],
+  ['选品时间', 'createdAt'],
   ['Amazon链接', 'amazonUrl'],
   ['产品类目', 'productCategory'],
   ['分类', 'category'],
@@ -43,7 +45,7 @@ const HEADER_MAP = [
 const HEADERS = HEADER_MAP.map(([h]) => h);
 
 /** 每列宽度（对齐美观） */
-const COL_WIDTHS = [26, 34, 18, 10, 10, 30, 20, 30, 20, 30, 20, 10, 10, 10, 10, 12, 8, 12, 12, 12, 10, 10, 11, 11, 10, 34, 10];
+const COL_WIDTHS = [26, 18, 34, 18, 10, 10, 30, 20, 30, 20, 30, 20, 10, 10, 10, 10, 12, 8, 12, 12, 12, 10, 10, 11, 11, 10, 34, 10];
 
 function getXLSX() {
   const X = window.XLSX;
@@ -60,6 +62,7 @@ function productToRow(p) {
   const s = (i) => (p.supplies || [])[i] || {};
   return {
     产品名称: p.name || '',
+    选品时间: p.createdAt ? formatDate(p.createdAt) : '',
     Amazon链接: p.amazonUrl || '',
     产品类目: p.productCategory || '',
     分类: p.category || '',

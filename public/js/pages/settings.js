@@ -503,6 +503,7 @@ export function render(container, { rerender }) {
           `✓ 利润看板：报表 ${s.reportRows} 行${s.purchaseSkus ? ` · 采购单 ${s.purchaseSkus} SKU` : ''}${s.hasOverrides ? ' · 含成本/头程覆盖' : ''}`,
         ] : []),
         ...(s.hasFba ? [`✓ FBA 利润计算：已存 SKU ${s.fbaRecords} 个`] : []),
+        ...(s.extraCount > 0 ? [`✓ 其它 ${s.extraCount} 项板块数据（自动纳入）`] : []),
       ];
       if (s.hasApiKey) lines.push('（含已保存的 DeepSeek API Key）');
       confirmDialog({

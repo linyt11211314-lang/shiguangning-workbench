@@ -25,7 +25,7 @@ const LOSS_DISPLAY = 25; // 亏损预警默认展示条数
 let detailShowAll = false; // 全量明细是否展开零销量 SKU
 
 // 利润看板次导航：analysis = 利润分析；shipping = 海运空运对比；fba = FBA 利润计算
-let profitSubTab = 'analysis';
+let profitSubTab = 'fba';
 // 海运空运对比输入状态：刷新后保留上次使用的数据（来自 localStorage，与默认值合并）
 let shipState = getShipState();
 

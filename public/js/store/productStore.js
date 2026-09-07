@@ -245,7 +245,7 @@ export function normalizeProduct(p) {
 
 export function listProducts() {
   ensureLoaded();
-  return (products || []).map(normalizeProduct).sort((a, b) => b.updatedAt - a.updatedAt);
+  return (products || []).map(normalizeProduct).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
 }
 
 export function getProduct(id) {

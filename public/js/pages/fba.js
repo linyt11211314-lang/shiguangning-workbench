@@ -283,7 +283,7 @@ export function render(container, ctx) {
 
   container.innerHTML = `
     <style>
-      .fba-layout { display: grid; grid-template-columns: 220px 1fr; gap: 14px; padding: 4px 4px 28px; max-width: 1040px; margin: 0; align-items: start; }
+      .fba-layout { display: grid; grid-template-columns: 240px 1fr; gap: 14px; padding: 4px 4px 28px; max-width: 1040px; margin: 0; align-items: start; }
       @media (max-width: 860px) { .fba-layout { grid-template-columns: 1fr; } }
       .fba-side { background: var(--card,#fff); border:1px solid var(--border,#ececf1); border-radius:14px; padding:14px 12px 10px; box-shadow:0 1px 3px rgba(20,20,40,.04); position: sticky; top: 12px; max-height: calc(100vh - 24px); overflow: auto; }
       .fba-side h3 { margin: 0 0 8px; font-size: 14px; }
@@ -292,9 +292,9 @@ export function render(container, ctx) {
       .fba-list-empty { font-size:12px; color:var(--muted,#8a8a99); padding: 18px 4px; text-align:center; line-height:1.7; }
       .fba-list-item { border:1px solid var(--border,#ececf1); border-radius:10px; margin-bottom:8px; background:var(--input,#fafafe); overflow: hidden; }
       .fba-list-item:last-child { margin-bottom:0; }
-      .fba-list-row { display:flex; align-items:center; justify-content:space-between; padding:8px 10px; cursor:pointer; gap:6px; user-select:none; }
+      .fba-list-row { display:flex; align-items:center; justify-content:space-between; padding:7px 10px; cursor:pointer; gap:6px; user-select:none; }
       .fba-list-row:hover { background: var(--card-hover, rgba(108,92,231,.06)); }
-      .fba-list-row .fba-list-sku { flex: 1; min-width: 0; font-weight: 600; font-size: 13px; color: var(--text,#1c1c28); word-break: break-all; }
+      .fba-list-row .fba-list-sku { flex: 1; min-width: 0; font-weight: 400; font-size: 11px; line-height: 1.4; color: var(--text,#1c1c28); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
       .fba-list-row .fba-list-meta { font-size:10px; color:var(--muted,#8a8a99); flex-shrink:0; }
       .fba-list-arrow { font-size:11px; color:var(--muted,#8a8a99); transition: transform .15s ease; flex-shrink:0; }
       .fba-list-item.is-open .fba-list-arrow { transform: rotate(90deg); }

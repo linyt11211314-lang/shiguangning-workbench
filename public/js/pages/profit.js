@@ -125,9 +125,9 @@ function subNav() {
   const tab = (id, label) => `<button class="pf-subnav-tab ${profitSubTab === id ? 'active' : ''}" data-sub="${id}">${label}</button>`;
   return `
   <div class="pf-subnav">
+    ${tab('fba', '🧮 FBA利润计算')}
     ${tab('analysis', '📊 利润分析')}
     ${tab('shipping', '🚢 海运空运对比')}
-    ${tab('fba', '🧮 FBA利润计算')}
   </div>`;
 }
 

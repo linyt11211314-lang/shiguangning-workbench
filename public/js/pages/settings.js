@@ -246,7 +246,7 @@ export function render(container, { rerender }) {
         <section class="settings-section" data-section="backup">
           <div class="section-card">
             <div class="card-title">数据备份 / 迁移</div>
-            <div class="card-sub">导出全部本地数据为 JSON，换设备时再导入恢复（选品库 / Listing 项目 / 设置 / 统计）</div>
+            <div class="card-sub">导出全部本地数据为 JSON，换设备时再导入恢复（选品库 / Listing 项目 / 设置 / 统计 / 利润看板 / FBA）</div>
             <div style="font-size:13px;line-height:1.85;color:var(--text-sub);margin-bottom:14px">
               <div>· 数据仅保存在你当前浏览器，换电脑 / 换浏览器会丢失，建议定期备份。</div>
               <div>· 导入为<strong>覆盖式</strong>：会用备份替换当前设备数据，导入前可先点「导出数据」留底。</div>
@@ -499,6 +499,10 @@ export function render(container, { rerender }) {
         `✓ 选品库 ${s.products} 条`,
         `✓ Listing 项目 ${s.projects} 条`,
         `${s.stats ? '✓' : '✗'} 统计`,
+        ...(s.hasProfit ? [
+          `✓ 利润看板：报表 ${s.reportRows} 行${s.purchaseSkus ? ` · 采购单 ${s.purchaseSkus} SKU` : ''}${s.hasOverrides ? ' · 含成本/头程覆盖' : ''}`,
+        ] : []),
+        ...(s.hasFba ? [`✓ FBA 利润计算：已存 SKU ${s.fbaRecords} 个`] : []),
       ];
       if (s.hasApiKey) lines.push('（含已保存的 DeepSeek API Key）');
       confirmDialog({

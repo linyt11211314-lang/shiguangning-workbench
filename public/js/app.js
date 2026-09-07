@@ -44,7 +44,7 @@ const TITLES = {
   settings: { title: '设置', sub: '外观、AI 服务与偏好' },
 };
 
-let currentRoute = 'library';
+let currentRoute = 'profit';
 const ROUTE_KEY = 'sgn.route';
 
 function pageOf(route) {

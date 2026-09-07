@@ -44,7 +44,7 @@ const TITLES = {
   settings: { title: '设置', sub: '外观、AI 服务与偏好' },
 };
 
-let currentRoute = 'profit';
+let currentRoute = 'home';
 const ROUTE_KEY = 'sgn.route';
 
 function pageOf(route) {
@@ -138,13 +138,17 @@ function init() {
   // 选品库数据迁移并预加载到 IndexedDB（异步，就绪后自动刷新当前页）
   initProducts();
 
-  // 恢复上次停留的页面（刷新不跳回首页）
-  try {
-    const saved = localStorage.getItem(ROUTE_KEY);
-    if (saved && pageOf(saved) === saved) currentRoute = saved;
-    // 兼容 listing:open:xxx / listing:new 等子路由
-    else if (saved && saved.startsWith('listing')) currentRoute = saved;
-  } catch (_) {}
+  // 桌面端（Electron，window.__fs 由 preload 注入）：每次启动默认进入首页（工作台入口）
+  // Web 端：恢复上次停留的页面（刷新不跳回首页）
+  const isDesktop = typeof window !== 'undefined' && !!window.__fs;
+  if (!isDesktop) {
+    try {
+      const saved = localStorage.getItem(ROUTE_KEY);
+      if (saved && pageOf(saved) === saved) currentRoute = saved;
+      // 兼容 listing:open:xxx / listing:new 等子路由
+      else if (saved && saved.startsWith('listing')) currentRoute = saved;
+    } catch (_) {}
+  }
 
   renderShell();
   renderPage();

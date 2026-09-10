@@ -1024,7 +1024,7 @@ function openProductModal(existing, onDone) {
             <div class="tier-margin-sub">目标利润率 ≥${Math.round(t.margin * 100)}%</div>
             ${tv ? `<div class="tier-price">${sym}${tv.displayPrice.toFixed(2)}</div>
               <div class="tier-profit">利润 ${sym}${tv.displayProfit.toFixed(2)}</div>
-              <div class="tier-margin2">实际利润率 ${Math.round((tv.displayMargin != null ? tv.displayMargin : tv.margin) * 100)}%</div>`
+              <div class="tier-margin2">实际利润率 ${((tv.displayMargin != null ? tv.displayMargin : tv.margin) * 100).toFixed(2)}%</div>`
               : `<div class="tier-empty">填写成本后计算</div>`}
           </div>`;
         }).join('')}

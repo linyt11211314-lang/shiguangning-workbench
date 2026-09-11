@@ -95,6 +95,70 @@ export function calculateQuote(input = {}) {
 }
 
 /**
+ * 正向利润计算：已知售价，按与 calculateQuote 完全相同的费用模型算利润。
+ * 与选品库利润口径保持一致：利润 = 售价 - 佣金 - 广告 - VAT - 仓储 - 退货 - FBA - 头程 - 采购成本。
+ * @param {object} input
+ *  price            实际售价（站点货币）
+ *  cost             采购成本（CNY）
+ *  exchangeRate     汇率（1 外币 = ? CNY）
+ *  fbaFee           FBA 配送费（站点货币）
+ *  shippingPerUnit  头程运费/件（站点货币）
+ *  referralRate     佣金率（0-1）
+ *  adRate           广告费率（0-1），默认 0.01
+ *  avtRate          VAT 税率（0-1）
+ *  storageRate      仓储费率（0-1）
+ *  returnRate       退货损耗率（0-1）
+ *  symbol           站点货币符号
+ */
+export function calculateProfitForward(input = {}) {
+  const price = Number(input.price) || 0;
+  const cost = Number(input.cost) || 0;
+  const exchangeRate = Number(input.exchangeRate) || 7.2;
+  const referralRate = Number(input.referralRate) || 0.15;
+  const adRate = Number(input.adRate) || 0.01;
+  const avtRate = Number(input.avtRate) || 0;
+  const storageRate = Number(input.storageRate) || 0;
+  const returnRate = Number(input.returnRate) || 0;
+  const fbaFee = Number(input.fbaFee) || 0;
+  const shippingPerUnit = Number(input.shippingPerUnit) || 0;
+  const symbol = input.symbol || '$';
+
+  if (cost <= 0) return { error: '请填写采购成本' };
+  if (price <= 0) return { error: '请填写售价' };
+
+  const costUsd = round2(cost / exchangeRate);
+  const referral = round2(price * referralRate);
+  const ad = round2(price * adRate);
+  const avt = round2(price * avtRate);
+  const storage = round2(price * storageRate);
+  const returnCost = round2(price * returnRate);
+  const profit = round2(price - referral - ad - avt - storage - returnCost - fbaFee - shippingPerUnit - costUsd);
+  const margin = price > 0 ? profit / price : 0;
+
+  return {
+    price,
+    profit,
+    margin,
+    symbol,
+    breakdown: {
+      costUsd,
+      fbaFee,
+      shippingPerUnit,
+      referral,
+      ad,
+      avt,
+      storage,
+      return: returnCost,
+      rateReferral: referralRate,
+      rateAd: adRate,
+      rateAvt: avtRate,
+      rateStorage: storageRate,
+      rateReturn: returnRate,
+    },
+  };
+}
+
+/**
  * 将报价转换为 .99 结尾的展示价。
  * 设计：
  *   - 展示价 d = floor(理论价 p) + 0.99（向上收尾到最近的 .99）

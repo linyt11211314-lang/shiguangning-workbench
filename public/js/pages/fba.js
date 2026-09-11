@@ -5,6 +5,8 @@
  */
 import { esc } from '../utils.js';
 import { getParams } from '../store/profitStore.js';
+import { calculateProfitForward } from '../services/pricing.js';
+import { AMAZON_SITES, PER_SITE_RATES } from '../config.js';
 
 const KEY = 'sgn.fba.calc';
 const REC_KEY = 'sgn.fba.records';
@@ -29,7 +31,11 @@ const DEFAULTS = {
   boxWeight: '',       // 整箱重量 kg（仅 dimSource='box' 用，与整箱体积重取大）
   fbaFee: '9',        // FBA 配送费 AED/件（默认 9）
   commissionRate: '15', // 亚马逊佣金率 %（默认 15）
-  adSpend: '',        // 广告花费 AED
+  vatRate: '5',       // VAT %（默认 5%，与选品库一致）
+  storageRate: '1',   // 仓储费率 %（默认 1%，与选品库一致）
+  returnRate: '7',    // 退货损耗率 %（默认 7%，AE 站默认值）
+  adRate: '0',        // 广告费率 %（按销售额比例；与实际 adSpend 二选一）
+  adSpend: '',        // 广告花费 AED（实际金额，优先于 adRate）
   adSales: '',        // 广告销售额 AED（算 ACOS）
 };
 
@@ -102,6 +108,10 @@ export function compute(s, rate) {
   const boxWeight = num(s.boxWeight);
   const fbaFee = num(s.fbaFee);
   const cr = num(s.commissionRate) / 100;
+  const vatRate = num(s.vatRate) / 100;
+  const storageRate = num(s.storageRate) / 100;
+  const returnRate = num(s.returnRate) / 100;
+  const adRateInput = num(s.adRate) / 100;
   const adSpend = num(s.adSpend);
   const adSales = num(s.adSales);
 
@@ -148,15 +158,46 @@ export function compute(s, rate) {
   const autoSales = price * qty;                           // 自动销售额
   const useManual = s.totalSales !== '' && s.totalSales != null && Number.isFinite(parseFloat(s.totalSales));
   const sales = useManual ? totalSalesInput : autoSales;   // 最终销售额
-  const unitCommission = price * cr;                       // 单件佣金
-  const totalCommission = unitCommission * qty;            // 总佣金
-  const totalFba = fbaFee * qty;                           // 总 FBA
-  const totalProductCost = unitTotalAED * qty;             // 总产品成本（AED）
-  const totalAd = adSpend;
 
-  const netProfit = sales - totalCommission - totalFba - totalAd - totalProductCost;
+  // 广告费：优先使用实际花费；若未填，则按广告费率 % 计算（与选品库一致）
+  const effectiveAdRate = adSpend > 0 ? 0 : adRateInput;
+  const quoteAdRate = adSpend > 0 ? 0 : adRateInput;       // 传给 calculateProfitForward 的广告费率
+
+  // 复用选品库利润模型：正向利润计算
+  const pf = calculateProfitForward({
+    price,
+    cost: costCny,
+    exchangeRate: 1 / rate,
+    fbaFee,
+    shippingPerUnit: unitHeadAED,
+    referralRate: cr,
+    adRate: quoteAdRate,
+    avtRate: vatRate,
+    storageRate,
+    returnRate,
+    symbol: 'AED',
+  });
+
+  // 单件口径
+  const unitCommission = pf && !pf.error ? pf.breakdown.referral : 0;
+  const unitAd = adSpend > 0 ? (sales > 0 ? adSpend / qty : 0) : (pf && !pf.error ? pf.breakdown.ad : 0);
+  const unitVat = pf && !pf.error ? pf.breakdown.avt : 0;
+  const unitStorage = pf && !pf.error ? pf.breakdown.storage : 0;
+  const unitReturn = pf && !pf.error ? pf.breakdown.return : 0;
+  const unitNetProfit = pf && !pf.error ? pf.profit : null;
+
+  // 总口径
+  const totalCommission = unitCommission * qty;
+  const totalFba = fbaFee * qty;
+  const totalAd = adSpend > 0 ? adSpend : (pf && !pf.error ? pf.breakdown.ad * qty : 0);
+  const totalVat = unitVat * qty;
+  const totalStorage = unitStorage * qty;
+  const totalReturn = unitReturn * qty;
+  const totalProductCost = unitTotalAED * qty;
+
+  const netProfit = sales - totalCommission - totalFba - totalAd - totalVat - totalStorage - totalReturn - totalProductCost;
   const netMargin = sales > 0 ? netProfit / sales : null;
-  const adSpendRatio = sales > 0 ? adSpend / sales : null;
+  const adSpendRatio = sales > 0 ? totalAd / sales : null;
   const acos = adSales > 0 ? adSpend / adSales : null;
 
   return {
@@ -167,9 +208,10 @@ export function compute(s, rate) {
     dimSource: source,
     weightLabel,
     autoSales, salesManual: useManual, sales,
-    unitCommission, totalCommission, totalFba, totalProductCost, totalAd,
+    unitCommission, unitAd, unitVat, unitStorage, unitReturn,
+    totalCommission, totalFba, totalAd, totalVat, totalStorage, totalReturn, totalProductCost,
     netProfit, netMargin, adSpendRatio, acos,
-    unitNetProfit: qty > 0 ? netProfit / qty : null,
+    unitNetProfit,
   };
 }
 
@@ -229,7 +271,10 @@ export function render(container, ctx) {
     field('costCny', '采购成本', '元', state) +
     field('headKgPrice', '头程运费单价', '元/kg', state) +
     field('fbaFee', 'FBA 配送费', 'AED/件', state) +
-    field('commissionRate', '亚马逊佣金率', '%', state);
+    field('commissionRate', '亚马逊佣金率', '%', state) +
+    field('vatRate', 'VAT', '%', state) +
+    field('storageRate', '仓储费率', '%', state) +
+    field('returnRate', '退货损耗率', '%', state);
   // 体积重来源切换（segmented control）+ 两组尺寸块（可同时填，切换不丢数据）
   const src = (state.dimSource === 'box') ? 'box' : 'product';
   // 产品段：单件长 × 宽 × 高 ÷ 系数，再与「单件实重」取大 → 单件计费重
@@ -279,7 +324,10 @@ export function render(container, ctx) {
         <div class="fba-grid cols-2" style="margin-top:10px;">${costCommonFields}</div>
       </div>
     </div>`;
-  const adFields = field('adSpend', '广告花费', 'AED', state) + field('adSales', '广告销售额', 'AED', state);
+  const adFields =
+    field('adSpend', '广告花费', 'AED', state) +
+    field('adRate', '广告费率', '%', state) +
+    field('adSales', '广告销售额', 'AED', state);
 
   container.innerHTML = `
     <style>
@@ -367,9 +415,9 @@ export function render(container, ctx) {
           <h3>💰 自动计算结果</h3>
           <div class="fba-results" id="fbaResults"></div>
           <div class="fba-note" id="fbaNote">
-            汇率口径：1 元 = ${fmt(rate, 4)} AED（与利润看板一致）。体积重来源：「按产品尺寸」= 单件长 × 宽 × 高 ÷ 系数，与「单件实重」取大 → 单件计费重；
-            「按箱子尺寸」= 整箱长 × 宽 × 高 ÷ 系数，与「整箱重量」取大 → 整箱计费重，再 ÷ 单箱件数 摊到每件（按整箱付运费）。
-            单件总成本 = 采购 × 汇率 + 单件头程；销售额默认 = 售价 × 销量；填了「总销售额」则以其为准。
+            利润计算口径与选品库一致：净利润 = 销售额 − 佣金 − 广告 − VAT − 仓储 − 退货 − FBA − 头程 − 采购成本。汇率口径：1 元 = ${fmt(rate, 4)} AED。
+            体积重来源：「按产品尺寸」= 单件长 × 宽 × 高 ÷ 系数，与「单件实重」取大 → 单件计费重；「按箱子尺寸」= 整箱长 × 宽 × 高 ÷ 系数，与「整箱重量」取大 → 整箱计费重，再 ÷ 单箱件数 摊到每件（按整箱付运费）。
+            单件总成本 = 采购 × 汇率 + 单件头程；销售额默认 = 售价 × 销量；填了「总销售额」则以其为准。广告花费优先按实际金额扣减；未填时按「广告费率 %」扣减。
           </div>
           <div class="fba-actions">
             <button class="btn btn-primary btn-sm" id="fbaSave">💾 保存当前 SKU</button>
@@ -421,6 +469,9 @@ export function render(container, ctx) {
       <div class="fba-kpi hl"><div class="k">净利润（AED）</div><div class="v ${clsNet}">${fmt(r.netProfit)}</div></div>
       <div class="fba-kpi"><div class="k">净利润率</div><div class="v ${clsMargin}">${r.netMargin == null ? '—' : (fmt(r.netMargin * 100) + '%')}</div></div>
       <div class="fba-kpi"><div class="k">佣金金额（单件 AED）</div><div class="v">${fmt(r.unitCommission)}</div></div>
+      <div class="fba-kpi"><div class="k">VAT（单件 AED）</div><div class="v">${fmt(r.unitVat)}</div></div>
+      <div class="fba-kpi"><div class="k">仓储费（单件 AED）</div><div class="v">${fmt(r.unitStorage)}</div></div>
+      <div class="fba-kpi"><div class="k">退货损耗（单件 AED）</div><div class="v">${fmt(r.unitReturn)}</div></div>
       <div class="fba-kpi"><div class="k">广告费占比（广告费 ÷ 销售额）</div><div class="v">${r.adSpendRatio == null ? '—' : (fmt(r.adSpendRatio * 100) + '%')}</div></div>
       <div class="fba-kpi"><div class="k">ACOS（广告费 ÷ 广告销售额）</div><div class="v">${r.acos == null ? '—' : (fmt(r.acos * 100) + '%')}</div></div>`;
   };

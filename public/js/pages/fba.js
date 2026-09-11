@@ -514,6 +514,7 @@ export function render(container, ctx) {
       state[el.dataset.fbaKey] = el.value;
       save(state);
       recalc();
+      if (el.dataset.fbaKey === 'sku') updateSaveBtnText();
     }
   });
   // select 走 change 事件（暂未使用，箱规预设已移除）
@@ -599,6 +600,7 @@ export function render(container, ctx) {
         return;
       }
       let rec;
+      // 1) 优先按已载入记录 id 覆盖
       if (loadedId) {
         const idx = records.findIndex((r) => r.id === loadedId);
         if (idx >= 0) {
@@ -613,6 +615,23 @@ export function render(container, ctx) {
           records.unshift(rec);
         }
       }
+      // 2) 兜底：按当前 SKU 匹配覆盖（防止 loadedId 因环境丢失时仍覆盖，与网页版一致）
+      if (!rec && sku) {
+        const idx = records.findIndex((r) => r.sku && r.sku.trim() === sku);
+        if (idx >= 0) {
+          rec = {
+            ...records[idx],
+            sku,
+            savedAt: Date.now(),
+            state: { ...state },
+            summary: summary(state, rate),
+          };
+          records.splice(idx, 1);
+          records.unshift(rec);
+          loadedId = rec.id;
+        }
+      }
+      // 3) 全新 SKU → 新建
       if (!rec) {
         const id = `r_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
         rec = {
@@ -632,6 +651,13 @@ export function render(container, ctx) {
     });
   }
 
+  // 更新保存按钮文案：载入中 / 当前 SKU 已存在 → 覆盖；否则新建
+  const updateSaveBtnText = () => {
+    const sku = (state.sku || '').trim();
+    const exists = !!loadedId || (sku && records.some((r) => r.sku && r.sku.trim() === sku));
+    const saveBtn = container.querySelector('#fbaSave');
+    if (saveBtn) saveBtn.textContent = exists ? '💾 覆盖保存 SKU' : '💾 保存当前 SKU';
+  };
   // 列表事件：载入 / 删除
   const refreshList = () => {
     records = loadRecords().sort((a, b) => (b.savedAt || 0) - (a.savedAt || 0));
@@ -639,8 +665,7 @@ export function render(container, ctx) {
     if (list) list.innerHTML = renderRecordsList(records, loadedId);
     const cnt = container.querySelector('#fbaRecCount');
     if (cnt) cnt.textContent = String(records.length);
-    const saveBtn = container.querySelector('#fbaSave');
-    if (saveBtn) saveBtn.textContent = loadedId ? '💾 覆盖保存 SKU' : '💾 保存当前 SKU';
+    updateSaveBtnText();
   };
 
   const listEl = container.querySelector('#fbaRecords');
@@ -683,4 +708,5 @@ export function render(container, ctx) {
   }
 
   recalc();
+  updateSaveBtnText();
 }

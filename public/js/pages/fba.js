@@ -317,10 +317,15 @@ export function render(container, ctx) {
       <div class="fba-dim-block ${src === 'product' ? 'active' : ''}" data-dim-block="product">
         <div class="fba-dim-head">📐 产品尺寸（长 × 宽 × 高 ÷ 系数，与单件实重取大 = 单件计费重）</div>
         <div class="fba-grid cols-4">${productDimFields}</div>
+        <div class="fba-grid cols-2" style="margin-top:10px;">
+          ${field('volCoef', '体积重系数', '（空=不计体积重）', state, '5000 国际空运；6000 海运头程')}
+        </div>
+        <div class="fba-dim-vol" id="fbaProductVol">填长/宽/高 + 体积重系数后自动计算体积重</div>
       </div>
       <div class="fba-dim-block ${src === 'box' ? 'active' : ''}" data-dim-block="box">
         <div class="fba-dim-head">📦 箱子尺寸（箱长×宽×高 ÷ 系数，与整箱重量取大 = 整箱计费重；÷单箱件数 = 单件头程）</div>
         <div class="fba-grid cols-4">${boxDimFields}</div>
+        <div class="fba-dim-vol" id="fbaBoxVol">填箱长/箱宽/箱高 + 体积重系数后自动计算整箱体积重</div>
         <div class="fba-grid cols-2" style="margin-top:10px;">${costCommonFields}</div>
       </div>
     </div>`;
@@ -369,6 +374,8 @@ export function render(container, ctx) {
       .fba-dim-block.active { border-color: var(--accent,#6c5ce7); background: rgba(108,92,231,.05); }
       .fba-dim-head { font-size:12px; color: var(--muted,#6a6a78); margin-bottom:8px; font-weight: 500; }
       .fba-dim-block.active .fba-dim-head { color: var(--accent,#6c5ce7); }
+      .fba-dim-vol { font-size:12px; color: var(--muted,#6a6a78); margin-top:8px; font-weight:500; }
+      .fba-dim-vol.has-value { color: var(--accent,#6c5ce7); }
       .fba-grid.cols-3 { grid-template-columns: repeat(3, 1fr); }
 
       .fba-main { min-width: 0; }
@@ -462,6 +469,27 @@ export function render(container, ctx) {
     const chargeDet = container.querySelector('#fbaChargeableDetail');
     if (chargeVal) chargeVal.textContent = `${fmt(r.chargeableKg)} kg`;
     if (chargeDet) chargeDet.textContent = headDetail;
+    // 同步更新产品/箱子尺寸块内的体积重显示
+    const productVolEl = container.querySelector('#fbaProductVol');
+    if (productVolEl) {
+      if (r.volumetricKg > 0) {
+        productVolEl.classList.add('has-value');
+        productVolEl.textContent = `体积重：${fmt(r.volumetricKg)} kg（${fmt(num(state.dimLength))}×${fmt(num(state.dimWidth))}×${fmt(num(state.dimHeight))} ÷ ${num(state.volCoef) || 5000}，与实重 ${fmt(r.sourceWeight)} 取大）`;
+      } else {
+        productVolEl.classList.remove('has-value');
+        productVolEl.textContent = '填长/宽/高 + 体积重系数后自动计算体积重';
+      }
+    }
+    const boxVolEl = container.querySelector('#fbaBoxVol');
+    if (boxVolEl) {
+      if (r.boxVolumetricKg > 0) {
+        boxVolEl.classList.add('has-value');
+        boxVolEl.textContent = `整箱体积重：${fmt(r.boxVolumetricKg)} kg（${fmt(num(state.boxLength))}×${fmt(num(state.boxWidth))}×${fmt(num(state.boxHeight))} ÷ ${num(state.volCoef) || 5000}，与整箱重量 ${fmt(r.sourceWeight)} 取大）`;
+      } else {
+        boxVolEl.classList.remove('has-value');
+        boxVolEl.textContent = '填箱长/箱宽/箱高 + 体积重系数后自动计算整箱体积重';
+      }
+    }
     resultsEl.innerHTML = `
       <div class="fba-kpi"><div class="k">单件总成本（AED）</div><div class="v">${fmt(r.unitTotalAED)}</div><div class="sub">采购 ${fmt(r.unitCostAED)} + 头程 ${fmt(r.unitHeadAED)}</div></div>
       <div class="fba-kpi"><div class="k">单件净利润（AED）</div><div class="v ${clsUnitNet}">${fmt(r.unitNetProfit)}</div><div class="sub">净利润 ÷ 销量</div></div>

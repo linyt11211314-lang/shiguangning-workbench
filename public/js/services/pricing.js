@@ -115,7 +115,8 @@ export function calculateProfitForward(input = {}) {
   const cost = Number(input.cost) || 0;
   const exchangeRate = Number(input.exchangeRate) || 7.2;
   const referralRate = Number(input.referralRate) || 0.15;
-  const adRate = Number(input.adRate) || 0.01;
+  // 已知售价算利润：广告费率严格按传入值计算；未传则视为 0（FBA 计算器没填广告时不应扣费）
+  const adRate = input.adRate == null ? 0 : (Number(input.adRate) || 0);
   const avtRate = Number(input.avtRate) || 0;
   const storageRate = Number(input.storageRate) || 0;
   const returnRate = Number(input.returnRate) || 0;

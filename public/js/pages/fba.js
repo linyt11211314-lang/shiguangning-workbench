@@ -226,7 +226,7 @@ function summary(state, rate) {
   };
 }
 
-function renderRecordsList(records) {
+function renderRecordsList(records, loadedId = null) {
   if (!records.length) {
     return `<div class="fba-list-empty">还没有保存的 SKU。<br>填好表单后点「💾 保存当前 SKU」即可加入列表。</div>`;
   }
@@ -234,8 +234,9 @@ function renderRecordsList(records) {
     const sum = r.summary || {};
     const margin = sum.netMargin == null ? '—' : (fmt(sum.netMargin * 100) + '%');
     const profitCls = (sum.netProfit ?? 0) >= 0 ? 'pos' : 'neg';
+    const isLoaded = loadedId && loadedId === r.id;
     return `
-      <div class="fba-list-item" data-rec-id="${esc(r.id)}">
+      <div class="fba-list-item ${isLoaded ? 'is-loaded' : ''}" data-rec-id="${esc(r.id)}">
         <div class="fba-list-row" data-act="toggle" data-rec-id="${esc(r.id)}" title="点击查看总览">
           <span class="fba-list-sku">${esc(r.sku || '(未命名)')}</span>
           <span class="fba-list-arrow">▸</span>
@@ -261,6 +262,7 @@ export function render(container, ctx) {
   const state = load();
   const rate = safeRate();
   let records = loadRecords().sort((a, b) => (b.savedAt || 0) - (a.savedAt || 0));
+  let loadedId = null; // 当前从列表载入的 SKU id；保存时覆盖而非新建
 
   const saleFields =
     fieldText('sku', 'SKU', state, '用于列表显示与以后查看') +
@@ -345,6 +347,7 @@ export function render(container, ctx) {
       .fba-list-empty { font-size:12px; color:var(--muted,#8a8a99); padding: 18px 4px; text-align:center; line-height:1.7; }
       .fba-list-item { border:1px solid var(--border,#ececf1); border-radius:10px; margin-bottom:8px; background:var(--input,#fafafe); overflow: hidden; }
       .fba-list-item:last-child { margin-bottom:0; }
+      .fba-list-item.is-loaded { border-color: var(--accent,#6c5ce7); background: rgba(108,92,231,.08); box-shadow: 0 0 0 2px rgba(108,92,231,.12); }
       .fba-list-row { display:flex; align-items:center; justify-content:space-between; padding:7px 10px; cursor:pointer; gap:6px; user-select:none; }
       .fba-list-row:hover { background: var(--card-hover, rgba(108,92,231,.06)); }
       .fba-list-row .fba-list-sku { flex: 1; min-width: 0; font-weight: 400; font-size: 11px; line-height: 1.4; color: var(--text,#1c1c28); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -576,8 +579,10 @@ export function render(container, ctx) {
         if (inp) inp.value = blank[k];
       });
       Object.assign(state, blank);
+      loadedId = null;
       recalc();
       syncAutoTotal();
+      refreshList();
     });
   }
 
@@ -593,19 +598,37 @@ export function render(container, ctx) {
         if (skuInp) skuInp.focus();
         return;
       }
-      const id = `r_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
-      const rec = {
-        id,
-        sku,
-        savedAt: Date.now(),
-        state: { ...state },
-        summary: summary(state, rate),
-      };
-      records.unshift(rec);
+      let rec;
+      if (loadedId) {
+        const idx = records.findIndex((r) => r.id === loadedId);
+        if (idx >= 0) {
+          rec = {
+            ...records[idx],
+            sku,
+            savedAt: Date.now(),
+            state: { ...state },
+            summary: summary(state, rate),
+          };
+          records.splice(idx, 1);
+          records.unshift(rec);
+        }
+      }
+      if (!rec) {
+        const id = `r_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+        rec = {
+          id,
+          sku,
+          savedAt: Date.now(),
+          state: { ...state },
+          summary: summary(state, rate),
+        };
+        records.unshift(rec);
+        loadedId = rec.id;
+      }
       saveRecords(records);
       refreshList();
-      if (ctx && typeof ctx.toast === 'function') ctx.toast(`已保存：${sku}`);
-      else console.log(`[FBA] 已保存 ${sku}`);
+      if (ctx && typeof ctx.toast === 'function') ctx.toast(`已${loadedId ? '覆盖' : '保存'}：${sku}`);
+      else console.log(`[FBA] 已${loadedId ? '覆盖' : '保存'} ${sku}`);
     });
   }
 
@@ -613,9 +636,11 @@ export function render(container, ctx) {
   const refreshList = () => {
     records = loadRecords().sort((a, b) => (b.savedAt || 0) - (a.savedAt || 0));
     const list = container.querySelector('#fbaRecords');
-    if (list) list.innerHTML = renderRecordsList(records);
+    if (list) list.innerHTML = renderRecordsList(records, loadedId);
     const cnt = container.querySelector('#fbaRecCount');
     if (cnt) cnt.textContent = String(records.length);
+    const saveBtn = container.querySelector('#fbaSave');
+    if (saveBtn) saveBtn.textContent = loadedId ? '💾 覆盖保存 SKU' : '💾 保存当前 SKU';
   };
 
   const listEl = container.querySelector('#fbaRecords');
@@ -634,8 +659,10 @@ export function render(container, ctx) {
             const inp = container.querySelector(`[data-fba-key="${k}"]`);
             if (inp) inp.value = state[k] ?? '';
           });
+          loadedId = rec.id;
           recalc();
           syncAutoTotal();
+          refreshList();
           if (ctx && typeof ctx.toast === 'function') ctx.toast(`已载入：${rec.sku}`);
         } else if (btn.dataset.act === 'del') {
           const ok = confirm(`确认删除「${rec.sku}」？此操作不可撤销。`);

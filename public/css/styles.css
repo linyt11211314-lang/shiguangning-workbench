@@ -2419,3 +2419,131 @@ html, body {
 }
 .rp-empty { padding: 32px 0; }
 
+/* ============================================================
+   竞品追踪模块（纯客户端移植 · 亚马逊竞品追踪站）
+   通用工具类（页面与弹窗都会用到，故全局定义）
+   ============================================================ */
+.row { display: flex; align-items: center; gap: 8px; }
+.spread { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.form-row { display: flex; gap: 12px; flex-wrap: wrap; }
+.form-row > .field { flex: 1; min-width: 160px; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip { display: inline-flex; align-items: center; gap: 4px; padding: 5px 12px; border-radius: 999px; background: var(--card-soft); border: 1px solid var(--border); color: var(--text-sub); cursor: pointer; font-size: 13px; user-select: none; }
+.chip.active { background: var(--primary-soft); border-color: var(--primary-border); color: var(--primary-deep); font-weight: 600; }
+.dlink { background: none; border: none; color: var(--primary-deep); cursor: pointer; font-size: inherit; padding: 2px 4px; border-radius: 6px; text-decoration: underline; }
+.dlink:hover { background: var(--hover-bg); }
+.tag-own { background: var(--primary-soft); color: var(--primary-deep); border: 1px solid var(--primary-border); }
+.tag-comp { background: #EEF2FF; color: #3b5bdb; border: 1px solid #d6e0ff; }
+.tag-good { background: var(--green-soft); color: var(--green); border: 1px solid var(--tag-g-border); }
+.tag-warn { background: var(--amber-soft); color: var(--amber); border: 1px solid #ffe2a8; }
+
+/* ---------- 竞品追踪结构样式（仅在 .ct-page 内） ---------- */
+.ct-page { font-size: 15px; line-height: 1.5; }
+.ct-page .section-title { font-size: 18px; font-weight: 700; }
+.ct-page .hint { margin: 10px 0; padding: 10px 12px; background: var(--card-soft); border: 1px solid var(--border); border-radius: var(--radius-md); font-size: 13px; color: var(--text-sub); line-height: 1.7; }
+.ct-page .empty { padding: 28px 0; text-align: center; color: var(--text-sub); }
+.ct-page .filter-sep { width: 1px; height: 18px; background: var(--border); margin: 0 4px; }
+
+.ct-page .track-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-card); margin-bottom: 14px; overflow: hidden; }
+.ct-page .track-head { display: flex; gap: 12px; align-items: center; padding: 12px 14px; }
+.ct-page .thumb-cell { width: 54px; height: 54px; flex: 0 0 54px; border-radius: var(--radius-md); overflow: hidden; background: var(--card-soft); border: 1px solid var(--border); cursor: pointer; display: flex; align-items: center; justify-content: center; }
+.ct-page .thumb-cell .thumb { width: 100%; height: 100%; object-fit: cover; }
+.ct-page .thumb-placeholder { font-size: 12px; color: var(--text-faint); }
+.ct-page .track-info { flex: 1; min-width: 0; }
+.ct-page .track-title { font-weight: 700; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ct-page .p-meta { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 4px; font-size: 12.5px; color: var(--text-sub); }
+.ct-page .p-meta a { color: var(--primary-deep); }
+.ct-page .track-ctl { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
+.ct-page .date-ctl { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; color: var(--text-sub); font-size: 13px; }
+.ct-page .date-input { border: 1px solid var(--border); border-radius: 8px; padding: 3px 6px; font-size: 13px; background: var(--card); color: var(--text); }
+.ct-page .btn-more { padding: 4px 9px; }
+
+.ct-page .date-strip { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 8px 14px; background: var(--card-soft); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); font-size: 12px; }
+.ct-page .dchip { padding: 3px 9px; border-radius: 999px; background: var(--card); border: 1px solid var(--border); color: var(--text-sub); cursor: pointer; }
+.ct-page .dchip.active { background: var(--primary-soft); border-color: var(--primary-border); color: var(--primary-deep); font-weight: 600; }
+
+.ct-page .track-rows { padding: 4px 14px 10px; }
+.ct-page .drow { display: flex; align-items: center; gap: 10px; padding: 9px 6px; border-radius: var(--radius-md); cursor: pointer; }
+.ct-page .drow:hover { background: var(--hover-bg); }
+.ct-page .drow + .drow { border-top: 1px solid var(--border); }
+.ct-page .drow.is-stale { opacity: .62; }
+.ct-page .drow-own { background: var(--primary-soft); }
+.ct-page .drow-role { flex: 0 0 52px; }
+.ct-page .drow-link { flex: 0 0 200px; min-width: 0; }
+.ct-page .drow-name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ct-page .drow-sub { font-size: 12px; color: var(--text-sub); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ct-page .drow-metrics { flex: 1; display: flex; flex-wrap: wrap; gap: 10px; min-width: 0; }
+.ct-page .metric { display: flex; flex-direction: column; line-height: 1.2; }
+.ct-page .metric .m-k { font-size: 11px; color: var(--text-faint); }
+.ct-page .metric .m-v { font-size: 14px; font-weight: 600; }
+.ct-page .drow-date { flex: 0 0 auto; font-size: 12px; }
+.ct-page .d-badge { padding: 2px 8px; border-radius: 999px; background: var(--card-soft); color: var(--text-sub); }
+.ct-page .d-badge.ok { background: var(--green-soft); color: var(--green); }
+.ct-page .d-badge.stale { background: var(--amber-soft); color: var(--amber); }
+.ct-page .d-badge.none { background: var(--red-soft); color: var(--red); }
+.ct-page .drow-act { flex: 0 0 auto; display: flex; gap: 5px; }
+
+.ct-page .add-comp { display: flex; gap: 8px; align-items: center; padding: 10px 14px; border-top: 1px dashed var(--border); background: var(--card-soft); }
+.ct-page .ac-plus { font-size: 18px; color: var(--primary-deep); }
+.ct-page .ac-url { flex: 1; min-width: 0; padding: 6px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--card); color: var(--text); font-size: 13px; }
+.ct-page .ac-name { flex: 0 0 160px; padding: 6px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--card); color: var(--text); font-size: 13px; }
+
+.ct-page .kw-panel { margin: 0 14px 10px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--card-soft); padding: 10px 12px; }
+.ct-page .kw-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 13px; font-weight: 600; }
+.ct-page .kw-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.ct-page .kw-table th, .ct-page .kw-table td { padding: 6px 8px; border-bottom: 1px solid var(--border); text-align: left; }
+.ct-page .kw-table th { color: var(--text-sub); font-weight: 600; }
+.ct-page .kw-word { font-weight: 600; }
+.ct-page .kw-up { color: var(--red); font-weight: 600; }
+.ct-page .kw-down { color: var(--green); font-weight: 600; }
+.ct-page .kw-abs { font-size: 11px; }
+.ct-page .kw-empty { font-size: 12.5px; color: var(--text-sub); padding: 4px 0; }
+.ct-page .kw-edit-area { width: 100%; min-height: 140px; border: 1px solid var(--border); border-radius: var(--radius-md); padding: 10px; font-family: inherit; font-size: 13px; background: var(--card); color: var(--text); resize: vertical; }
+.ct-page .kw-matrix th, .ct-page .kw-matrix td { text-align: center; }
+
+.ct-page .hist-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.ct-page .hist-table th, .ct-page .hist-table td { padding: 7px 8px; border-bottom: 1px solid var(--border); }
+.ct-page .hist-table tr.hi-cur { background: var(--primary-soft); }
+.ct-page .ct-snap-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.ct-page .ct-snap-table th, .ct-page .ct-snap-table td { padding: 7px 9px; border-bottom: 1px solid var(--border); text-align: center; }
+.ct-page .ct-snap-table th:first-child, .ct-page .ct-snap-table td:first-child { text-align: left; }
+
+.ct-page .fill-wrap { overflow-x: auto; }
+.ct-page .fill-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.ct-page .fill-table th, .ct-page .fill-table td { padding: 6px 8px; border-bottom: 1px solid var(--border); }
+.ct-page .fill-name { text-align: left; white-space: nowrap; }
+.ct-page .fill-branch { color: var(--text-faint); margin-right: 4px; }
+.ct-page .fill-store { color: var(--text-sub); margin-right: 6px; font-size: 12px; }
+.ct-page .fill-in { width: 88px; padding: 5px 7px; border: 1px solid var(--border); border-radius: 7px; background: var(--card); color: var(--text); font-size: 13px; }
+.ct-page .fill-sel { width: 96px; }
+
+.row-menu { position: fixed; z-index: 1200; background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-md); box-shadow: var(--shadow-float); min-width: 170px; padding: 6px; }
+.row-menu-head { font-size: 12px; color: var(--text-sub); padding: 4px 8px 6px; border-bottom: 1px solid var(--border); margin-bottom: 4px; }
+.row-menu-item { display: block; width: 100%; text-align: left; padding: 8px 10px; border: none; background: transparent; border-radius: 8px; font-size: 13.5px; color: var(--text); cursor: pointer; }
+.row-menu-item:hover { background: var(--hover-bg); }
+.row-menu-item.danger { color: var(--red); }
+
+.ct-page .chart-wrap { width: 100%; }
+.ct-page .chart { width: 100%; height: auto; }
+.ct-page .legend { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 6px; font-size: 12px; color: var(--text-sub); }
+.ct-page .legend span { display: inline-flex; align-items: center; gap: 5px; }
+.ct-page .legend i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+.ct-page .img-pick { display: flex; gap: 16px; align-items: flex-start; }
+.ct-page .img-preview { width: 160px; height: 160px; border: 1px solid var(--border); border-radius: var(--radius-md); overflow: hidden; background: var(--card-soft); display: flex; align-items: center; justify-content: center; }
+.ct-page .img-preview img { max-width: 100%; max-height: 100%; }
+.ct-page .img-pick-side { flex: 1; }
+
+/* ---------- 竞品追踪深色模式补充 ---------- */
+:root[data-mode="dark"] .ct-page .track-card,
+:root[data-mode="dark"] .ct-page .kw-panel,
+:root[data-mode="dark"] .ct-page .add-comp,
+:root[data-mode="dark"] .ct-page .date-strip { background: var(--card-soft); }
+:root[data-mode="dark"] .ct-page .tag-comp { background: #1e2a4d; color: #9db5ff; border-color: #2a3a66; }
+:root[data-mode="dark"] .ct-page .drow-own { background: rgba(45, 213, 127, .12); }
+:root[data-mode="dark"] .chip { background: #1b221d; border-color: #2a3a2c; color: #9cb6a8; }
+:root[data-mode="dark"] .chip.active { background: var(--primary-soft); color: var(--primary-deep); }
+:root[data-mode="dark"] .tag-own { background: var(--primary-soft); }
+:root[data-mode="dark"] .tag-comp { background: #1e2a4d; color: #9db5ff; border-color: #2a3a66; }
+:root[data-mode="dark"] .tag-good { background: rgba(23,160,94,.18); }
+:root[data-mode="dark"] .tag-warn { background: rgba(245,158,11,.18); }
+

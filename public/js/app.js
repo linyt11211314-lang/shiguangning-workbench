@@ -7,6 +7,7 @@ import { esc } from './utils.js';
 import { hasApiKey, getSettings, maskedKey, applyTheme, syncFollowSystem } from './store/settingsStore.js';
 import { onProjectsChange } from './store/projectStore.js';
 import { onProductsChange, countProducts, initProducts } from './store/productStore.js';
+import { initCompetitors, onCompetitorsChange } from './store/competitorStore.js';
 import { onScheduleChange } from './store/scheduleStore.js';
 import { render as renderHome } from './pages/home.js';
 import { render as renderLibrary } from './pages/library.js';
@@ -18,12 +19,15 @@ import { render as renderAds } from './pages/ads.js';
 import { render as renderAnalysis } from './pages/analysis.js';
 import { render as renderStockAlert } from './pages/stockAlert.js';
 import { render as renderProfit } from './pages/profit.js';
+import { render as renderCompetitor } from './pages/competitor.js';
+import { render as renderCompetitorDetail } from './pages/competitorDetail.js';
 
 const NAV = [
   { id: 'library', label: '选品库', icon: 'box' },
   { id: 'listing', label: 'AI Listing 工坊', icon: 'sparkles' },
   { id: 'ads', label: '广告诊断', icon: 'target' },
   { id: 'analysis', label: '数据分析', icon: 'analytics' },
+  { id: 'competitor', label: '竞品追踪', icon: 'radar' },
   { id: 'commission', label: '我的提成预估', icon: 'chart' },
   { id: 'stockalert', label: '库存预警', icon: 'alert' },
   { id: 'profit', label: '利润看板', icon: 'trending' },
@@ -41,6 +45,7 @@ const TITLES = {
   analysis: { title: '数据分析', sub: '领星数据 → 月度品牌产品分析报表' },
   stockalert: { title: '库存预警', sub: '基于领星数据自动扫描库存，结合运输时间生成补货建议' },
   profit: { title: '利润看板', sub: '领星利润报表 + 采购单 → 真实利润分析与成本维护' },
+  competitor: { title: '竞品追踪', sub: '亚马逊竞品价格 / BSR / 库存 / 关键词排名追踪与对比' },
   settings: { title: '设置', sub: '外观、AI 服务与偏好' },
 };
 
@@ -48,8 +53,9 @@ let currentRoute = 'home';
 const ROUTE_KEY = 'sgn.route';
 
 function pageOf(route) {
-  if (route === 'home' || route === 'library' || route === 'settings' || route === 'commission' || route === 'schedule' || route === 'ads' || route === 'analysis' || route === 'stockalert' || route === 'profit') return route;
+  if (route === 'home' || route === 'library' || route === 'settings' || route === 'commission' || route === 'schedule' || route === 'ads' || route === 'analysis' || route === 'stockalert' || route === 'profit' || route === 'competitor') return route;
   if (route.startsWith('listing')) return 'listing';
+  if (route.startsWith('competitor')) return 'competitor';
   return 'home';
 }
 
@@ -126,6 +132,10 @@ function renderPage() {
   else if (page === 'analysis') renderAnalysis(container, ctx);
   else if (page === 'stockalert') renderStockAlert(container, ctx);
   else if (page === 'profit') renderProfit(container, ctx);
+  else if (page === 'competitor') {
+    if (currentRoute.startsWith('competitor:detail')) renderCompetitorDetail(container, currentRoute, ctx);
+    else renderCompetitor(container, currentRoute, ctx);
+  }
   else if (page === 'settings') renderSettings(container, ctx);
 }
 
@@ -138,6 +148,9 @@ function init() {
   // 选品库数据迁移并预加载到 IndexedDB（异步，就绪后自动刷新当前页）
   initProducts();
 
+  // 竞品追踪数据预加载（IndexedDB / 桌面文件化）
+  initCompetitors();
+
   // 桌面端（Electron，window.__fs 由 preload 注入）：每次启动默认进入首页（工作台入口）
   // Web 端：恢复上次停留的页面（刷新不跳回首页）
   const isDesktop = typeof window !== 'undefined' && !!window.__fs;
@@ -147,6 +160,8 @@ function init() {
       if (saved && pageOf(saved) === saved) currentRoute = saved;
       // 兼容 listing:open:xxx / listing:new 等子路由
       else if (saved && saved.startsWith('listing')) currentRoute = saved;
+      // 兼容 competitor:detail:xxx 等子路由
+      else if (saved && saved.startsWith('competitor')) currentRoute = saved;
     } catch (_) {}
   }
 
@@ -163,6 +178,7 @@ function init() {
   };
   onProjectsChange(refresh);
   onProductsChange(refresh);
+  onCompetitorsChange(refresh);
   onScheduleChange(refresh);
 
   // 左上角品牌「拾光柠」点击回首页

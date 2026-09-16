@@ -498,7 +498,6 @@ export function render(container, { rerender }) {
         `${s.settings ? '✓' : '✗'} 设置 / API 配置`,
         `✓ 选品库 ${s.products} 条`,
         `✓ Listing 项目 ${s.projects} 条`,
-        `✓ 竞品追踪 ${s.competitor} 条`,
         `${s.stats ? '✓' : '✗'} 统计`,
         ...(s.hasProfit ? [
           `✓ 利润看板：报表 ${s.reportRows} 行${s.purchaseSkus ? ` · 采购单 ${s.purchaseSkus} SKU` : ''}${s.hasOverrides ? ' · 含成本/头程覆盖' : ''}`,

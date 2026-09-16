@@ -5,7 +5,6 @@
  * 用于换设备迁移、定期备份。导入为「覆盖式」，导入前请先导出当前数据作为保险。
  */
 import { STORAGE_KEYS } from '../config.js';
-import { COMPETITOR_KEY } from '../store/competitorStore.js';
 
 /** 已知板块的展示名（仅用于说明与展示；未知 sgn.* 键也会被自动纳入备份） */
 const NAMED_KEYS = [
@@ -13,7 +12,6 @@ const NAMED_KEYS = [
   { key: STORAGE_KEYS.PRODUCTS, name: '选品库' },
   { key: STORAGE_KEYS.PROJECTS, name: 'Listing 项目' },
   { key: STORAGE_KEYS.STATS, name: '统计' },
-  { key: COMPETITOR_KEY, name: '竞品追踪' },
   { key: 'sgn.profit.params', name: '利润看板参数' },
   { key: 'sgn.profit.report', name: '利润报表缓存' },
   { key: 'sgn.profit.purchase', name: '采购单缓存' },
@@ -46,7 +44,6 @@ export async function collectBackup() {
   // 1) 已知命名键（有展示名，顺序稳定）
   for (const { key } of NAMED_KEYS) {
     if (key === STORAGE_KEYS.PRODUCTS) continue; // 选品库单独处理（可能存 IndexedDB）
-    if (key === COMPETITOR_KEY) continue;        // 竞品追踪单独处理（IndexedDB / 桌面文件）
     const raw = localStorage.getItem(key);
     if (raw != null) data[key] = parseRaw(raw);
   }
@@ -63,12 +60,6 @@ export async function collectBackup() {
     const prods = await exportProductsRaw();
     if (prods && prods.length) data[STORAGE_KEYS.PRODUCTS] = prods;
   } catch (_) { /* 忽略选品库导出异常 */ }
-  // 竞品追踪：经由 competitorStore 从活跃存储读取（web=IndexedDB，桌面=文件化 localStorage）
-  try {
-    const { exportCompetitorRaw } = await import('../store/competitorStore.js');
-    const comps = await exportCompetitorRaw();
-    if (comps && comps.length) data[COMPETITOR_KEY] = comps;
-  } catch (_) { /* 忽略竞品追踪导出异常 */ }
   return {
     app: '拾光柠工作台',
     version: 3,
@@ -117,7 +108,6 @@ export async function parseBackupFile(file) {
     products: rawData[STORAGE_KEYS.PRODUCTS] ?? null,
     listingProjects: rawData[STORAGE_KEYS.PROJECTS] ?? null,
     stats: rawData[STORAGE_KEYS.STATS] ?? null,
-    competitor: rawData[COMPETITOR_KEY] ?? null,
     profit: {},
     fba: {},
     extra: {}, // 其余 sgn.* 键（未来新增板块自动落入此处，导入时原样写回）
@@ -126,14 +116,12 @@ export async function parseBackupFile(file) {
   Object.entries(rawData).forEach(([key, val]) => {
     if (val == null || !key.startsWith('sgn.')) return;
     if (key === STORAGE_KEYS.SETTINGS || key === STORAGE_KEYS.PROJECTS || key === STORAGE_KEYS.STATS) return; // 已显式读取
-    if (key === COMPETITOR_KEY) return; // 竞品追踪单独走 Raw 通道
     if (key.startsWith('sgn.profit.')) out.profit[key] = val;
     else if (key.startsWith('sgn.fba.')) out.fba[key] = val;
     else out.extra[key] = val;
   });
 
   const hasData = Object.values({ settings: out.settings, products: out.products, listingProjects: out.listingProjects, stats: out.stats }).some((v) => v != null)
-    || out.competitor != null
     || Object.keys(out.profit).length > 0 || Object.keys(out.fba).length > 0 || Object.keys(out.extra).length > 0;
   if (!hasData) throw new Error('备份文件中未识别到任何工作台数据');
   return out;
@@ -159,7 +147,6 @@ export function summarizeBackup(obj) {
     settings: obj.settings != null,
     products: count(obj.products),
     projects: count(obj.listingProjects),
-    competitor: count(obj.competitor),
     stats: obj.stats != null,
     hasProfit: Object.keys(obj.profit || {}).length > 0,
     reportRows,
@@ -201,15 +188,6 @@ export async function applyBackup(obj) {
       await importProductsRaw(obj.products);
     } catch (e) {
       console.error('[dataBackup] 选品库导入失败：', e && e.message);
-    }
-  }
-  // 竞品追踪：写回活跃存储（web=IndexedDB，桌面=文件化 localStorage）
-  if (obj.competitor != null) {
-    try {
-      const { importCompetitorRaw } = await import('../store/competitorStore.js');
-      await importCompetitorRaw(obj.competitor);
-    } catch (e) {
-      console.error('[dataBackup] 竞品追踪导入失败：', e && e.message);
     }
   }
 }

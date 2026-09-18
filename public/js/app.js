@@ -18,6 +18,7 @@ import { render as renderAds } from './pages/ads.js';
 import { render as renderAnalysis } from './pages/analysis.js';
 import { render as renderStockAlert } from './pages/stockAlert.js';
 import { render as renderProfit } from './pages/profit.js';
+import { initTitleKeywordTool } from './pages/titleKeyword.js';
 
 const NAV = [
   { id: 'library', label: '选品库', icon: 'box' },
@@ -152,6 +153,9 @@ function init() {
 
   renderShell();
   renderPage();
+
+  // 顶栏全局快捷工具：标题主词解析（自动注入按钮，零侵入）
+  initTitleKeywordTool();
 
   // 数据变化时联动刷新当前页
   const refresh = () => {

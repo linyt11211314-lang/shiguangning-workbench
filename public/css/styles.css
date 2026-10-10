@@ -82,19 +82,19 @@
   --sidebar-ai-bg: rgba(255, 255, 255, .07);
 }
 
-/* ---------- 明暗模式：深色（黑色背景 + 白色卡片） ---------- */
+/* ---------- 明暗模式：深色（全暗背景，无白色面块） ---------- */
 :root[data-mode="dark"] {
   --bg: #0C100D;
   --bg-deep: #151B17;
-  --card: #FFFFFF;
-  --card-soft: #F5F8F6;
-  --border: #E8EDE9;
-  --border-strong: #D5DED8;
+  --card: #161D18;
+  --card-soft: #1B241E;
+  --border: #27322B;
+  --border-strong: #36443C;
 
-  /* 全局文字为深色（用于白色卡片内）；侧栏/顶栏单独覆盖为浅色 */
-  --text: #22322A;
-  --text-sub: #5F7368;
-  --text-faint: #9AA9A1;
+  /* 全局文字为浅色（暗色卡片上可读）；主题色/状态色/图标彩色保持不变 */
+  --text: #E6EFE9;
+  --text-sub: #A7BCB0;
+  --text-faint: #7A9083;
 
   --green: #3FD98B;
   --green-soft: #143224;
@@ -117,24 +117,24 @@
   --shadow-float: 0 2px 6px rgba(0, 0, 0, .35), 0 18px 48px rgba(0, 0, 0, .5);
   --shadow-inset: inset 0 1px 2px rgba(0, 0, 0, .35);
 
-  --hover-bg: #EDF5F1;
-  --btn-soft-hover: #E2F2E9;
-  --ghost-hover: #EDF5F1;
-  --danger-hover: #FBE3E3;
+  --hover-bg: #212B24;
+  --btn-soft-hover: #2A362D;
+  --ghost-hover: #212B24;
+  --danger-hover: #4A2A26;
   --topbar-bg: rgba(12, 16, 13, .85);
   --mask-bg: rgba(0, 0, 0, .55);
-  --track-bg: #D3E3DA;
-  --scrollbar: #C5D8CE;
-  --scrollbar-hover: #A9C4B4;
-  --skeleton-c1: #EBF2EE;
-  --skeleton-c2: #F5FAF7;
-  --tag-g-border: #BFE5CE;
-  --tag-b-border: #C8E3F9;
-  --tag-r-border: #F7D4D4;
-  --cb-border: #C9E3F9;
-  --cb-text: #4F7188;
+  --track-bg: #2A362E;
+  --scrollbar: #2C3830;
+  --scrollbar-hover: #3C4C42;
+  --skeleton-c1: #1B241E;
+  --skeleton-c2: #222D26;
+  --tag-g-border: #2E4436;
+  --tag-b-border: #2C4257;
+  --tag-r-border: #57332F;
+  --cb-border: #2C4257;
+  --cb-text: #9CB6CC;
   --overlay-bg: rgba(12, 16, 13, .78);
-  --resultbar-bg: rgba(255, 255, 255, .92);
+  --resultbar-bg: rgba(22, 29, 24, .92);
 
   --grad-g1: #F1FBD0; --grad-g2: #CDEF8A; --grad-gfg: #65A30D;
   --grad-b1: #DFF3FE; --grad-b2: #A8DCFA; --grad-bfg: #0284C7;
@@ -145,23 +145,23 @@
 :root[data-mode="dark"] .topbar { color: #E9F1EC; }
 :root[data-mode="dark"] .topbar .topbar-sub { color: #9CABA2; }
 
-/* 深色模式白卡细节修正 */
-:root[data-mode="dark"] .segmented .seg-item { color: #9CABA2; }
-:root[data-mode="dark"] .segmented .seg-item.active { background: #FFFFFF; color: #22322A; box-shadow: 0 1px 4px rgba(0,0,0,.35); }
-:root[data-mode="dark"] .modal-close { background: #EFF3F0; color: #5F7368; }
-:root[data-mode="dark"] .modal-close:hover { background: #DDE4DF; color: #22322A; }
-:root[data-mode="dark"] .tag { background: #EFF3F0; color: #5F7368; border-color: #DDE4DF; }
+/* 深色模式暗卡细节修正 */
+:root[data-mode="dark"] .segmented .seg-item { color: #A7BCB0; }
+:root[data-mode="dark"] .segmented .seg-item.active { background: #2A362D; color: #E6EFE9; box-shadow: 0 1px 4px rgba(0,0,0,.35); }
+:root[data-mode="dark"] .modal-close { background: #2A362D; color: #A7BCB0; }
+:root[data-mode="dark"] .modal-close:hover { background: #36443C; color: #E6EFE9; }
+:root[data-mode="dark"] .tag { background: #202A23; color: #A7BCB0; border-color: #36443C; }
 :root[data-mode="dark"] .competitor-card .cb-text, :root[data-mode="dark"] .competitor-card .cb-body { color: #9CB6CC; }
 :root[data-mode="dark"] .competitor-card { background: #13293C; border-color: #1B3B54; }
 :root[data-mode="dark"] .competitor-card .cb-title { color: #5BA9E6; }
 :root[data-mode="dark"] .step-item.done .step-dot { background: #17A05E; }
-:root[data-mode="dark"] .theme-swatch { border-color: #D5DED8; }
-:root[data-mode="dark"] .site-chip { background: #FFFFFF; color: #5F7368; }
+:root[data-mode="dark"] .theme-swatch { border-color: #36443C; }
+:root[data-mode="dark"] .site-chip { background: #202A23; color: #A7BCB0; }
 :root[data-mode="dark"] .site-chip.active { background: var(--primary-soft); color: var(--primary-deep); }
-:root[data-mode="dark"] .collapse-wrap { background: #FFFFFF; }
-:root[data-mode="dark"] .collapse-head:hover { background: #F5F8F6; }
-:root[data-mode="dark"] .gen-block-head { border-color: #E8EDE9; }
-:root[data-mode="dark"] .lib-thumb { background: #F5F8F6; border-color: #E8EDE9; }
+:root[data-mode="dark"] .collapse-wrap { background: var(--card); }
+:root[data-mode="dark"] .collapse-head:hover { background: #212B24; }
+:root[data-mode="dark"] .gen-block-head { border-color: #27322B; }
+:root[data-mode="dark"] .lib-thumb { background: #1B241E; border-color: #27322B; }
 
 /* ---------- 显示偏好：页面密度 / 字号 / 圆角 ---------- */
 html[data-density="compact"] {
